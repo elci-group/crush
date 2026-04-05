@@ -500,8 +500,8 @@ func (s *Styles) DialogHelpStyles() help.Styles {
 // DefaultStyles returns the default styles for the UI.
 func DefaultStyles() Styles {
 	var (
-		primary   = charmtone.Charple
-		secondary = charmtone.Dolly
+		primary   = charmtone.Malibu
+		secondary = charmtone.Zest
 		tertiary  = charmtone.Bok
 		// accent    = charmtone.Zest
 
