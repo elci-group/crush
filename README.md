@@ -13,16 +13,21 @@
 
 ## Features
 
+### Core Crush Features
 - **Multi-Model:** choose from a wide range of LLMs or add your own via OpenAI- or Anthropic-compatible APIs
 - **Flexible:** switch LLMs mid-session while preserving context
 - **Session-Based:** maintain multiple work sessions and contexts per project
 - **LSP-Enhanced:** Crush uses LSPs for additional context, just like you do
-- **Task Delegation:** decompose complex tasks into independent sub-tasks, assign to different models, and execute concurrently on isolated git branches
-- **Context Injection:** snapshot-based file selection with multi-resolution context levels (tree summary, file summaries, full content) and intelligent token budgeting
-- **Smart Chunking:** automatic text splitting with contextual headers/footers for large files across multiple model context windows
 - **Extensible:** add capabilities via MCPs (`http`, `stdio`, and `sse`)
 - **Works Everywhere:** first-class support in every terminal on macOS, Linux, Windows (PowerShell and WSL), Android, FreeBSD, OpenBSD, and NetBSD
 - **Industrial Grade:** built on the Charm ecosystem, powering 25k+ applications, from leading open source projects to business-critical infrastructure
+
+### Advanced Features (Kaptaind-Crush)
+- **Task Delegation:** decompose complex tasks into independent sub-tasks, assign to different models, and execute concurrently on isolated git branches with automatic conflict prevention
+- **Context Injection:** snapshot-based file selection with multi-resolution context levels (tree summary, file summaries, full content) and intelligent token budgeting
+- **Smart Chunking:** automatic text splitting with contextual headers/footers for large files across multiple model context windows
+- **YouTube Integration:** built-in mini player for watching videos while coding (audio-only mode via mpv)
+- **Speech Features:** text-to-speech for code reading and speech-to-text for hands-free input
 
 ## Installation
 
@@ -227,7 +232,7 @@ Crush’s default model listing is managed in [Catwalk](https://github.com/charm
 
 ## Task Delegation
 
-For complex coding tasks that span multiple modules or components, Crush can decompose the work and delegate it across different models running concurrently on isolated git branches.
+For complex coding tasks that span multiple modules or components, Crush can decompose the work and delegate it across different models running concurrently on isolated git branches with automatic conflict prevention.
 
 ### How It Works
 
@@ -235,28 +240,179 @@ Press `ctrl+d` to analyze a task for delegation suitability. Crush will:
 
 1. **Analyze** the task for complexity and identify independent modules
 2. **Propose** a delegation plan showing task breakdown and assigned models
-3. **Review** the plan with confidence score and detailed scope information
-4. **Execute** on isolated git branches with automatic conflict detection
-5. **Merge** results back to main with dependency-aware ordering
+3. **Review** the plan with confidence score, model assignments, and scope details
+4. **Approve** the plan with optional modifications
+5. **Execute** sub-tasks concurrently on isolated git branches with progress tracking
+6. **Merge** results back to main with dependency-aware ordering and conflict resolution
 
-### Example
+### Workflow Examples
 
+#### Example 1: Authentication Refactor
 For a task like "refactor authentication system to support OAuth and add API rate limiting," Crush might propose:
 
-- **Task 1:** OAuth implementation (assigned to model A)
-- **Task 2:** Rate limiting middleware (assigned to model B)
-- **Task 3:** Integration tests (assigned to model A)
+```
+Original Task: "Refactor authentication system to support OAuth and add API rate limiting"
+Complexity: 8/10
+Confidence: 92%
 
-Each task runs on its own branch (`feature/oauth-...`, `feature/ratelimit-...`, etc.) with automatic conflict prevention through scope-based file assignment.
+Proposed Sub-Tasks:
+├─ Task 1: OAuth implementation
+│  ├─ Assigned to: GPT-4 (OpenAI)
+│  ├─ Branch: feature/oauth-1234567890
+│  └─ Scope: internal/auth/oauth/**
+├─ Task 2: Rate limiting middleware  
+│  ├─ Assigned to: Claude 3.5 (Anthropic)
+│  ├─ Branch: feature/ratelimit-1234567890
+│  └─ Scope: internal/middleware/ratelimit/**
+└─ Task 3: Integration tests
+   ├─ Assigned to: GPT-4 (OpenAI)
+   ├─ Branch: feature/auth-tests-1234567890
+   └─ Scope: tests/auth/**
+```
 
-### Features
+Each task runs independently with automatic file scope separation to prevent merge conflicts. Tasks complete in parallel and merge sequentially based on dependencies.
 
-- **Intelligent Decomposition:** keyword-based complexity analysis and automatic module identification
-- **Multi-Model Assignment:** distribute tasks across different models and providers
-- **Concurrent Execution:** sub-agents work in parallel on isolated git branches
-- **Conflict Prevention:** scope-based file assignment prevents merge conflicts
-- **Progress Tracking:** real-time monitoring with token usage and completion percentages
-- **User Approval:** review and modify plans before execution
+#### Example 2: API Enhancement
+Task: "Add user profile endpoints with validation, caching, and documentation"
+
+```
+Sub-Tasks:
+├─ API endpoints implementation
+│  └─ Scope: internal/api/users/**
+├─ Input validation layer
+│  └─ Scope: internal/validation/**
+├─ Redis caching integration
+│  └─ Scope: internal/cache/**
+└─ API documentation
+   └─ Scope: docs/api/**
+```
+
+### Key Features
+
+- **Intelligent Decomposition:** keyword-based complexity analysis (1-10 scale) and automatic module identification from task description
+- **Multi-Model Assignment:** distribute tasks across different models and providers based on their strengths
+- **Concurrent Execution:** sub-agents work in parallel on isolated git branches at true concurrency
+- **Conflict Prevention:** scope-based file assignment with automatic overlap detection prevents merge conflicts
+- **Dependency Awareness:** tasks can depend on each other; merge order respects these dependencies
+- **Progress Tracking:** real-time monitoring with token usage, completion percentages, and step-by-step progress
+- **User Approval:** review and optionally modify plans before execution
+- **Auto-Merge Resolution:** multiple conflict resolution strategies (abort, manual review, or automatic with agent-decides mode)
+
+### When to Use Delegation
+
+Delegation works best for tasks with:
+- **Multiple independent modules** (authentication, caching, validation, tests)
+- **Clear separation of concerns** (API layer, middleware, persistence, UI)
+- **Moderate to high complexity** (complexity score 6+)
+- **No hard inter-task dependencies** (or clear ordering)
+
+## Keyboard Shortcuts
+
+### Core Navigation
+| Shortcut | Action |
+|----------|--------|
+| `ctrl+c` | Quit Crush |
+| `ctrl+g` | Show help |
+| `ctrl+n` | New session |
+| `ctrl+S` | Sessions menu |
+| `ctrl+m` / `ctrl+l` | Model selector |
+| `ctrl+p` | Commands palette |
+| `tab` | Change focus (editor ↔ chat) |
+
+### Editor & Input
+| Shortcut | Action |
+|----------|--------|
+| `enter` | Send message |
+| `shift+enter` / `ctrl+j` | New line in editor |
+| `ctrl+o` | Open external editor |
+| `ctrl+f` | Attach file (any type) |
+| `ctrl+v` | Paste from clipboard |
+| `@` | Mention/reference file |
+| `up` / `down` | Browse prompt history |
+
+### Chat & Context
+| Shortcut | Action |
+|----------|--------|
+| `ctrl+d` | Task delegation (analyze task for decomposition) |
+| `ctrl+i` | Context injection (snapshot-based file selection) |
+| `ctrl+e` | File explorer |
+| `ctrl+u` | Text-to-speech settings |
+| `ctrl+r` | Record audio |
+| `ctrl+p` | YouTube mini player |
+
+### Advanced Features
+| Shortcut | Feature | Description |
+|----------|---------|-------------|
+| `ctrl+d` | Delegation | Decompose complex tasks into sub-tasks for concurrent execution across models |
+| `ctrl+i` | Injection | Select files with multi-resolution context (tree → summaries → full content) |
+| `ctrl+f` | Attachments | Attach files with automatic smart chunking for large files |
+| `ctrl+p` | Player | Integrated YouTube mini player (audio-only via mpv) |
+| `ctrl+u` | Speech | Text-to-speech and speech-to-text integration |
+
+## Advanced Features (Kaptaind-Crush Specific)
+
+### Context Injection with Snapshots (`ctrl+i`)
+
+Intelligently inject project context with multi-resolution levels and token budgeting:
+
+1. **Tree Summary** - Directory structure overview
+2. **File Summaries** - List of selected files with sizes
+3. **Full Content** - Complete file contents for selected files
+
+Features:
+- Snapshot-based file selection with checkbox tree UI
+- Real-time token count estimation
+- Automatic smart chunking when content exceeds context window
+- Model-aware context window detection with auto-switching suggestions
+- Per-file size limits and total token budgets
+
+**Workflow:**
+```
+Press ctrl+i → Select files (tree view) → Set token budget → 
+Preview compiled context → Inject into current task
+```
+
+### Smart Text Chunking
+
+Automatically split large files into intelligent chunks for multi-window context:
+
+- **Contextual Headers/Footers** - Each chunk includes its position ("Chunk X of Y")
+- **Intelligent Boundaries** - Splits at logical paragraph/function boundaries, not just token counts
+- **Line Overlap** - Maintains context continuity between chunks (configurable, default 10 lines)
+- **Token Estimation** - Shows chunk size in tokens for better planning
+- **Multi-Model Support** - Detects context window of selected model
+
+When you attach a file (`ctrl+f`) larger than the model's context window, Crush automatically chunks it with visual indicators for easy reference.
+
+### YouTube Mini Player (`ctrl+p`)
+
+Integrated video playback for reference material while coding:
+
+- **Audio-Only Mode** - Use `mpv` for lightweight playback (no video stream)
+- **yt-dlp Integration** - Automatic YouTube URL resolution
+- **Playback Controls** - Play/pause, seek, volume adjustment
+- **Now Playing Display** - Current track, artist, duration, progress bar
+- **Background Operation** - Watch while coding without interruption
+
+**Controls:**
+- `space` - Play/pause
+- `←` / `→` - Seek ±10 seconds
+- `↑` / `↓` - Volume ±5%
+- `n` - Next track
+- `q` - Close player
+
+### Speech Features (`ctrl+u` for settings, `ctrl+r` for recording)
+
+**Text-to-Speech (TTS):**
+- Read code aloud for accessibility
+- Multiple voice options and playback speeds
+- Supports code comments, documentation, and full files
+
+**Speech-to-Text (STT):**
+- Record voice input with `ctrl+r`
+- Automatic transcription to text
+- Hands-free code dictation
+- Useful for quick thoughts without typing
 
 ## Configuration
 
