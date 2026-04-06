@@ -17,6 +17,9 @@
 - **Flexible:** switch LLMs mid-session while preserving context
 - **Session-Based:** maintain multiple work sessions and contexts per project
 - **LSP-Enhanced:** Crush uses LSPs for additional context, just like you do
+- **Task Delegation:** decompose complex tasks into independent sub-tasks, assign to different models, and execute concurrently on isolated git branches
+- **Context Injection:** snapshot-based file selection with multi-resolution context levels (tree summary, file summaries, full content) and intelligent token budgeting
+- **Smart Chunking:** automatic text splitting with contextual headers/footers for large files across multiple model context windows
 - **Extensible:** add capabilities via MCPs (`http`, `stdio`, and `sse`)
 - **Works Everywhere:** first-class support in every terminal on macOS, Linux, Windows (PowerShell and WSL), Android, FreeBSD, OpenBSD, and NetBSD
 - **Industrial Grade:** built on the Charm ecosystem, powering 25k+ applications, from leading open source projects to business-critical infrastructure
@@ -221,6 +224,39 @@ Is there a provider you’d like to see in Crush? Is there an existing model tha
 Crush’s default model listing is managed in [Catwalk](https://github.com/charmbracelet/catwalk), a community-supported, open source repository of Crush-compatible models, and you’re welcome to contribute.
 
 <a href="https://github.com/charmbracelet/catwalk"><img width="174" height="174" alt="Catwalk Badge" src="https://github.com/user-attachments/assets/95b49515-fe82-4409-b10d-5beb0873787d" /></a>
+
+## Task Delegation
+
+For complex coding tasks that span multiple modules or components, Crush can decompose the work and delegate it across different models running concurrently on isolated git branches.
+
+### How It Works
+
+Press `ctrl+d` to analyze a task for delegation suitability. Crush will:
+
+1. **Analyze** the task for complexity and identify independent modules
+2. **Propose** a delegation plan showing task breakdown and assigned models
+3. **Review** the plan with confidence score and detailed scope information
+4. **Execute** on isolated git branches with automatic conflict detection
+5. **Merge** results back to main with dependency-aware ordering
+
+### Example
+
+For a task like "refactor authentication system to support OAuth and add API rate limiting," Crush might propose:
+
+- **Task 1:** OAuth implementation (assigned to model A)
+- **Task 2:** Rate limiting middleware (assigned to model B)
+- **Task 3:** Integration tests (assigned to model A)
+
+Each task runs on its own branch (`feature/oauth-...`, `feature/ratelimit-...`, etc.) with automatic conflict prevention through scope-based file assignment.
+
+### Features
+
+- **Intelligent Decomposition:** keyword-based complexity analysis and automatic module identification
+- **Multi-Model Assignment:** distribute tasks across different models and providers
+- **Concurrent Execution:** sub-agents work in parallel on isolated git branches
+- **Conflict Prevention:** scope-based file assignment prevents merge conflicts
+- **Progress Tracking:** real-time monitoring with token usage and completion percentages
+- **User Approval:** review and modify plans before execution
 
 ## Configuration
 

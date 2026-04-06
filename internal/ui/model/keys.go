@@ -12,6 +12,7 @@ type KeyMap struct {
 		PasteImage  key.Binding
 		MentionFile key.Binding
 		Commands    key.Binding
+		RecordAudio key.Binding
 
 		// Attachments key maps
 		AttachmentDeleteMode key.Binding
@@ -57,13 +58,20 @@ type KeyMap struct {
 	}
 
 	// Global key maps
-	Quit     key.Binding
-	Help     key.Binding
-	Commands key.Binding
-	Models   key.Binding
-	Suspend  key.Binding
-	Sessions key.Binding
-	Tab      key.Binding
+	Quit         key.Binding
+	Help         key.Binding
+	Commands     key.Binding
+	Models       key.Binding
+	Suspend      key.Binding
+	Sessions     key.Binding
+	Tabs         key.Binding
+	TabPrev      key.Binding
+	TabNext      key.Binding
+	FileExplorer key.Binding
+	Injection    key.Binding
+	Delegation   key.Binding
+	TTS          key.Binding
+	Tab          key.Binding
 }
 
 func DefaultKeyMap() KeyMap {
@@ -89,8 +97,36 @@ func DefaultKeyMap() KeyMap {
 			key.WithHelp("ctrl+z", "suspend"),
 		),
 		Sessions: key.NewBinding(
-			key.WithKeys("ctrl+s"),
-			key.WithHelp("ctrl+s", "sessions"),
+			key.WithKeys("ctrl+S"), // Shift+Ctrl+S
+			key.WithHelp("ctrl+S", "sessions"),
+		),
+		Tabs: key.NewBinding(
+			key.WithKeys("ctrl+t"),
+			key.WithHelp("ctrl+t", "tabs menu"),
+		),
+		TabPrev: key.NewBinding(
+			key.WithKeys("ctrl+["),
+			key.WithHelp("ctrl+[", "prev tab"),
+		),
+		TabNext: key.NewBinding(
+			key.WithKeys("ctrl+]"),
+			key.WithHelp("ctrl+]", "next tab"),
+		),
+		FileExplorer: key.NewBinding(
+			key.WithKeys("ctrl+e"),
+			key.WithHelp("ctrl+e", "file explorer"),
+		),
+		Injection: key.NewBinding(
+			key.WithKeys("ctrl+i"),
+			key.WithHelp("ctrl+i", "context injection"),
+		),
+		Delegation: key.NewBinding(
+			key.WithKeys("ctrl+d"),
+			key.WithHelp("ctrl+d", "task delegation"),
+		),
+		TTS: key.NewBinding(
+			key.WithKeys("ctrl+u"),
+			key.WithHelp("ctrl+u", "tts settings"),
 		),
 		Tab: key.NewBinding(
 			key.WithKeys("tab"),
@@ -119,7 +155,11 @@ func DefaultKeyMap() KeyMap {
 	)
 	km.Editor.AddImage = key.NewBinding(
 		key.WithKeys("ctrl+f"),
-		key.WithHelp("ctrl+f", "add image"),
+		key.WithHelp("ctrl+f", "add file"),
+	)
+	km.Editor.RecordAudio = key.NewBinding(
+		key.WithKeys("ctrl+r"),
+		key.WithHelp("ctrl+r", "record audio"),
 	)
 	km.Editor.PasteImage = key.NewBinding(
 		key.WithKeys("ctrl+v"),
