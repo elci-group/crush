@@ -230,7 +230,10 @@ Crush’s default model listing is managed in [Catwalk](https://github.com/charm
 
 <a href="https://github.com/charmbracelet/catwalk"><img width="174" height="174" alt="Catwalk Badge" src="https://github.com/user-attachments/assets/95b49515-fe82-4409-b10d-5beb0873787d" /></a>
 
-## Task Delegation
+## Task Delegation (Beta)
+
+> [!NOTE]
+> Task delegation is currently in beta and disabled by default. This feature is still being refined and integrated into the main agent loop.
 
 For complex coding tasks that span multiple modules or components, Crush can decompose the work and delegate it across different models running concurrently on isolated git branches with automatic conflict prevention.
 
@@ -314,6 +317,7 @@ Delegation works best for tasks with:
 | `ctrl+c` | Quit Crush |
 | `ctrl+g` | Show help |
 | `ctrl+n` | New session |
+| `ctrl+shift+space` | Tabs menu |
 | `ctrl+S` | Sessions menu |
 | `ctrl+m` / `ctrl+l` | Model selector |
 | `ctrl+p` | Commands palette |
@@ -333,7 +337,6 @@ Delegation works best for tasks with:
 ### Chat & Context
 | Shortcut | Action |
 |----------|--------|
-| `ctrl+d` | Task delegation (analyze task for decomposition) |
 | `ctrl+i` | Context injection (snapshot-based file selection) |
 | `ctrl+e` | File explorer |
 | `ctrl+u` | Text-to-speech settings |
@@ -343,7 +346,6 @@ Delegation works best for tasks with:
 ### Advanced Features
 | Shortcut | Feature | Description |
 |----------|---------|-------------|
-| `ctrl+d` | Delegation | Decompose complex tasks into sub-tasks for concurrent execution across models |
 | `ctrl+i` | Injection | Select files with multi-resolution context (tree → summaries → full content) |
 | `ctrl+f` | Attachments | Attach files with automatic smart chunking for large files |
 | `ctrl+y` | Player | Integrated YouTube mini player (audio-only via mpv) |

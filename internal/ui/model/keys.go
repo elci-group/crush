@@ -102,8 +102,8 @@ func DefaultKeyMap() KeyMap {
 			key.WithHelp("ctrl+S", "sessions"),
 		),
 		Tabs: key.NewBinding(
-			key.WithKeys("ctrl+t"),
-			key.WithHelp("ctrl+t", "tabs menu"),
+			key.WithKeys("ctrl+shift+space"),
+			key.WithHelp("ctrl+shift+space", "tabs menu"),
 		),
 		TabPrev: key.NewBinding(
 			key.WithKeys("ctrl+["),
@@ -122,8 +122,8 @@ func DefaultKeyMap() KeyMap {
 			key.WithHelp("ctrl+i", "context injection"),
 		),
 		Delegation: key.NewBinding(
-			key.WithKeys("ctrl+d"),
-			key.WithHelp("ctrl+d", "task delegation"),
+			key.WithKeys(""), // Disabled - feature not fully integrated
+			key.WithHelp("", ""),
 		),
 		Player: key.NewBinding(
 			key.WithKeys("ctrl+y"),
