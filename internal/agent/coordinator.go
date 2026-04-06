@@ -1008,7 +1008,8 @@ func (c *coordinator) runSubAgent(ctx context.Context, params subAgentParams) (f
 		NonInteractive:   true,
 	})
 	if err != nil {
-		return fantasy.NewTextErrorResponse("error generating response"), nil
+		slog.Error("Sub-agent execution failed", "session", session.ID, "error", err)
+		return fantasy.NewTextErrorResponse(fmt.Sprintf("error generating response: %v", err)), nil
 	}
 
 	// Update parent session cost
