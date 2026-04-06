@@ -338,7 +338,7 @@ Delegation works best for tasks with:
 | `ctrl+e` | File explorer |
 | `ctrl+u` | Text-to-speech settings |
 | `ctrl+r` | Record audio |
-| `ctrl+p` | YouTube mini player |
+| `ctrl+y` | YouTube mini player |
 
 ### Advanced Features
 | Shortcut | Feature | Description |
@@ -346,7 +346,7 @@ Delegation works best for tasks with:
 | `ctrl+d` | Delegation | Decompose complex tasks into sub-tasks for concurrent execution across models |
 | `ctrl+i` | Injection | Select files with multi-resolution context (tree → summaries → full content) |
 | `ctrl+f` | Attachments | Attach files with automatic smart chunking for large files |
-| `ctrl+p` | Player | Integrated YouTube mini player (audio-only via mpv) |
+| `ctrl+y` | Player | Integrated YouTube mini player (audio-only via mpv) |
 | `ctrl+u` | Speech | Text-to-speech and speech-to-text integration |
 
 ## Advanced Features (Kaptaind-Crush Specific)
@@ -384,7 +384,7 @@ Automatically split large files into intelligent chunks for multi-window context
 
 When you attach a file (`ctrl+f`) larger than the model's context window, Crush automatically chunks it with visual indicators for easy reference.
 
-### YouTube Mini Player (`ctrl+p`)
+### YouTube Mini Player (`ctrl+y`)
 
 Integrated video playback for reference material while coding:
 
