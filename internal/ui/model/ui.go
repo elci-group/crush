@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"image/color"
 	"log/slog"
 	"math/rand"
 	"net/http"
@@ -34,9 +35,12 @@ import (
 	"github.com/charmbracelet/crush/internal/history"
 	"github.com/charmbracelet/crush/internal/home"
 	"github.com/charmbracelet/crush/internal/message"
+	"github.com/charmbracelet/crush/internal/mpv"
+	"github.com/charmbracelet/crush/internal/snapshot"
 	"github.com/charmbracelet/crush/internal/permission"
 	"github.com/charmbracelet/crush/internal/pubsub"
 	"github.com/charmbracelet/crush/internal/session"
+	"github.com/charmbracelet/crush/internal/tts"
 	"github.com/charmbracelet/crush/internal/ui/anim"
 	"github.com/charmbracelet/crush/internal/ui/attachments"
 	"github.com/charmbracelet/crush/internal/ui/chat"
@@ -141,9 +145,17 @@ type (
 	sessionFilesUpdatesMsg struct {
 		sessionFiles []SessionFile
 	}
+
+	tabAnimTickMsg struct{}
 )
 
 // UI represents the main user interface model.
+type ChatPane struct {
+	Session *session.Session
+	Chat    *Chat
+	Color   color.Color
+}
+
 type UI struct {
 	com          *common.Common
 	session      *session.Session
@@ -151,6 +163,9 @@ type UI struct {
 
 	// keeps track of read files while we don't have a session id
 	sessionFileReads []string
+
+	completedBgSessions []notify.Notification
+	tabAnimFrame        int
 
 	// initialSessionID is set when loading a specific session on startup.
 	initialSessionID string
@@ -244,6 +259,17 @@ type UI struct {
 	promptQueue        int
 	pillsView          string
 
+	// Split panes
+	panes      []*ChatPane
+	activePane int
+
+	// mpv player for the YouTube mini player.
+	mpvPlayer *mpv.Player
+
+	// Context injection state.
+	injectionSnapshot *snapshot.Snapshot
+	injectionContext  *snapshot.CompiledContext
+
 	// Todo spinner
 	todoSpinner    spinner.Model
 	todoIsSpinning bool
@@ -257,6 +283,9 @@ type UI struct {
 		index    int
 		draft    string
 	}
+
+	// Task delegation state
+	delegation *DelegationUIState
 }
 
 // New creates a new instance of the [UI] model.
@@ -305,12 +334,22 @@ func New(com *common.Common, initialSessionID string, continueLast bool) *UI {
 
 	header := newHeader(com)
 
+	mpvPlayer := mpv.New()
+	go func() {
+		if err := mpvPlayer.Start(context.Background()); err != nil {
+			slog.Error("Failed to start mpv player", "error", err)
+		}
+	}()
+
 	ui := &UI{
 		com:                 com,
 		dialog:              dialog.NewOverlay(),
 		keyMap:              keyMap,
 		textarea:            ta,
 		chat:                ch,
+		panes:               []*ChatPane{{Chat: ch}},
+		activePane:          0,
+		mpvPlayer:           mpvPlayer,
 		header:              header,
 		completions:         comp,
 		attachments:         attachments,
@@ -321,6 +360,7 @@ func New(com *common.Common, initialSessionID string, continueLast bool) *UI {
 		notifyWindowFocused: true,
 		initialSessionID:    initialSessionID,
 		continueLastSession: continueLast,
+		delegation:          NewDelegationUIState(),
 	}
 
 	status := NewStatus(com, ui)
@@ -373,6 +413,7 @@ func (m *UI) Init() tea.Cmd {
 	if cmd := m.loadInitialSession(); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
+	cmds = append(cmds, StatusTickCmd())
 	return tea.Batch(cmds...)
 }
 
@@ -643,6 +684,13 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case pubsub.Event[permission.PermissionNotification]:
 		m.handlePermissionNotification(msg.Payload)
+	case tabAnimTickMsg:
+		if len(m.completedBgSessions) > 0 {
+			m.tabAnimFrame++
+			cmds = append(cmds, tickTabAnim())
+		} else {
+			m.tabAnimFrame = 0
+		}
 	case cancelTimerExpiredMsg:
 		m.isCanceling = false
 	case tea.TerminalVersionMsg:
@@ -805,6 +853,10 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					cmds = append(cmds, cmd)
 				}
 			}
+		}
+	case statusTickMsg:
+		if cmd := m.status.Update(msg); cmd != nil {
+			cmds = append(cmds, cmd)
 		}
 	case spinner.TickMsg:
 		if m.dialog.HasDialogs() {
@@ -1038,6 +1090,18 @@ func (m *UI) appendSessionMessage(msg message.Message) tea.Cmd {
 			}
 		}
 		if msg.FinishPart() != nil && msg.FinishPart().Reason == message.FinishReasonEndTurn {
+			if ttsCfg := m.com.Config().TTS; ttsCfg != nil && ttsCfg.Enabled && msg.Content().Text != "" {
+				go func(text string) {
+					audioFile, err := tts.Speak(context.Background(), text, ttsCfg)
+					if err == nil && m.mpvPlayer != nil {
+						m.mpvPlayer.Enqueue(audioFile, "TTS Response")
+						if m.mpvPlayer.NowPlaying().State != mpv.StatePlaying {
+							m.mpvPlayer.PlayNext()
+						}
+					}
+				}(msg.Content().Text)
+			}
+
 			infoItem := chat.NewAssistantInfoItem(m.com.Styles, &msg, m.com.Config(), time.Unix(m.lastUserMessageTime, 0))
 			m.chat.AppendMessages(infoItem)
 			if m.chat.Follow() {
@@ -1108,6 +1172,18 @@ func (m *UI) updateSessionMessage(msg message.Message) tea.Cmd {
 
 	if shouldRenderAssistant && msg.FinishPart() != nil && msg.FinishPart().Reason == message.FinishReasonEndTurn {
 		if infoItem := m.chat.MessageItem(chat.AssistantInfoID(msg.ID)); infoItem == nil {
+			if ttsCfg := m.com.Config().TTS; ttsCfg != nil && ttsCfg.Enabled && msg.Content().Text != "" {
+				go func(text string) {
+					audioFile, err := tts.Speak(context.Background(), text, ttsCfg)
+					if err == nil && m.mpvPlayer != nil {
+						m.mpvPlayer.Enqueue(audioFile, "TTS Response")
+						if m.mpvPlayer.NowPlaying().State != mpv.StatePlaying {
+							m.mpvPlayer.PlayNext()
+						}
+					}
+				}(msg.Content().Text)
+			}
+
 			newInfoItem := chat.NewAssistantInfoItem(m.com.Styles, &msg, m.com.Config(), time.Unix(m.lastUserMessageTime, 0))
 			m.chat.AppendMessages(newInfoItem)
 		}
@@ -1529,6 +1605,17 @@ func (m *UI) handleDialogMsg(msg tea.Msg) tea.Cmd {
 			},
 		))
 
+	case dialog.ActionInjectionApply:
+		m.injectionContext = msg.Context
+		// Set active context for prompt injection.
+		formatted := snapshot.FormatForInjection(msg.Context)
+		snapshot.SetActiveContext(formatted)
+		m.dialog.CloseDialog(dialog.InjectionID)
+		cmds = append(cmds, func() tea.Msg {
+			return util.NewInfoMsg(fmt.Sprintf("Context injected: %d files, ~%dk tokens",
+				len(msg.Context.FileContents), msg.Context.EstTokens/1000))
+		})
+
 	case dialog.ActionRunCustomCommand:
 		if len(msg.Arguments) > 0 && msg.Args == nil {
 			m.dialog.CloseFrontDialog()
@@ -1626,6 +1713,63 @@ func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 			return true
 		case key.Matches(msg, m.keyMap.Sessions):
 			if cmd := m.openSessionsDialog(); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+			return true
+		case key.Matches(msg, m.keyMap.Tabs):
+			if len(m.completedBgSessions) > 0 {
+				sessionID := m.completedBgSessions[len(m.completedBgSessions)-1].SessionID
+				m.completedBgSessions = m.completedBgSessions[:len(m.completedBgSessions)-1]
+				m.tabAnimFrame = 0
+				cmds = append(cmds, m.loadSession(sessionID))
+			} else {
+				if cmd := m.openSessionsDialog(); cmd != nil {
+					cmds = append(cmds, cmd)
+				}
+			}
+			return true
+		case key.Matches(msg, m.keyMap.TabPrev), key.Matches(msg, m.keyMap.TabNext):
+			sessions, err := m.com.Workspace.ListSessions(context.Background())
+			if err == nil && len(sessions) > 1 {
+				currentIdx := -1
+				for i, s := range sessions {
+					if m.session != nil && s.ID == m.session.ID {
+						currentIdx = i
+						break
+					}
+				}
+				if currentIdx != -1 {
+					nextIdx := currentIdx
+					if key.Matches(msg, m.keyMap.TabPrev) {
+						nextIdx = (currentIdx - 1 + len(sessions)) % len(sessions)
+					} else {
+						nextIdx = (currentIdx + 1) % len(sessions)
+					}
+					if nextIdx != currentIdx {
+						cmds = append(cmds, m.loadSession(sessions[nextIdx].ID))
+					}
+				} else if len(sessions) > 0 {
+					cmds = append(cmds, m.loadSession(sessions[0].ID))
+				}
+			}
+			return true
+		case key.Matches(msg, m.keyMap.FileExplorer):
+			if cmd := m.openFileExplorerDialog(); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+			return true
+		case key.Matches(msg, m.keyMap.TTS):
+			if cmd := m.openTTSDialog(); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+			return true
+		case key.Matches(msg, m.keyMap.Injection):
+			if cmd := m.openInjectionDialog(); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+			return true
+		case key.Matches(msg, m.keyMap.Player):
+			if cmd := m.openPlayerDialog(); cmd != nil {
 				cmds = append(cmds, cmd)
 			}
 			return true
@@ -1984,6 +2128,8 @@ func (m *UI) drawHeader(scr uv.Screen, area uv.Rectangle) {
 		m.isCompact,
 		m.detailsOpen,
 		area.Dx(),
+		m.completedBgSessions,
+		m.tabAnimFrame,
 	)
 }
 
@@ -2177,6 +2323,8 @@ func (m *UI) ShortHelp() []key.Binding {
 			tab,
 			commands,
 			k.Models,
+			k.Injection,
+			k.Player,
 		)
 
 		switch m.focus {
@@ -2259,6 +2407,8 @@ func (m *UI) FullHelp() [][]key.Binding {
 			commands,
 			k.Models,
 			k.Sessions,
+			k.Injection,
+			k.Player,
 		)
 		if hasSession {
 			mainBinds = append(mainBinds, k.Chat.NewSession)
@@ -2317,6 +2467,8 @@ func (m *UI) FullHelp() [][]key.Binding {
 					commands,
 					k.Models,
 					k.Sessions,
+					k.Injection,
+					k.Player,
 				},
 			)
 			editorBinds := []key.Binding{
@@ -2905,15 +3057,85 @@ func (m *UI) randomizePlaceholders() {
 
 // renderEditorView renders the editor view with attachments if any.
 func (m *UI) renderEditorView(width int) string {
-	var attachmentsView string
+	var parts []string
+
 	if len(m.attachments.List()) > 0 {
-		attachmentsView = m.attachments.Render(width)
+		parts = append(parts, m.attachments.Render(width))
 	}
-	return strings.Join([]string{
-		attachmentsView,
-		m.textarea.View(),
-		"", // margin at bottom of editor
-	}, "\n")
+
+	// Add context window monitoring if attachments exist
+	if len(m.attachments.List()) > 0 {
+		contextStatus := m.renderContextWindowStatus(width)
+		if contextStatus != "" {
+			parts = append(parts, contextStatus)
+		}
+	}
+
+	parts = append(parts, m.textarea.View())
+	parts = append(parts, "") // margin at bottom of editor
+
+	return strings.Join(parts, "\n")
+}
+
+// findModelsWithSufficientWindow finds models that can fit the given tokens without splitting.
+// Returns a list of model names that have sufficient context windows.
+func (m *UI) findModelsWithSufficientWindow(requiredTokens int64) []string {
+	// Note: Currently the config.Models don't expose context window directly.
+	// This would require integrating with the catwalk provider metadata.
+	// For now, returning empty - users can manually switch via ctrl+l models menu.
+	return nil
+}
+
+// renderContextWindowStatus shows context window capacity warnings/suggestions.
+func (m *UI) renderContextWindowStatus(width int) string {
+	model := m.selectedLargeModel()
+	if model == nil || model.CatwalkCfg.ContextWindow == 0 {
+		return ""
+	}
+
+	// Calculate total tokens: message + attachments
+	msgTokens := snapshot.EstimateTokens(m.textarea.Value())
+	attachTokens := 0
+	for _, att := range m.attachments.List() {
+		attachTokens += snapshot.EstimateTokens(string(att.Content))
+	}
+	totalTokens := int64(msgTokens + attachTokens)
+	contextWindow := model.CatwalkCfg.ContextWindow
+	usedPercent := int((float64(totalTokens) / float64(contextWindow)) * 100)
+
+	t := m.com.Styles
+	var status string
+
+	if totalTokens > contextWindow {
+		// Exceeds capacity - calculate splits
+		opts := snapshot.DefaultSplitOptions(contextWindow)
+		attachContent := ""
+		for _, att := range m.attachments.List() {
+			attachContent += string(att.Content) + "\n"
+		}
+		chunks := snapshot.SplitText(attachContent, opts)
+		splitInfo := ""
+		if len(chunks) > 1 {
+			report := snapshot.GenerateReport(chunks)
+			splitInfo = fmt.Sprintf(" (will split into %d chunks)", report.ChunkCount)
+		}
+
+		status = fmt.Sprintf("⚠ %d tokens exceeds %s capacity (%d%%%s - use /split to send in chunks or switch models)",
+			totalTokens, model.CatwalkCfg.Name, usedPercent, splitInfo)
+		status = t.Base.Foreground(t.Red).Render(status)
+	} else if usedPercent > 75 {
+		// Warn at 75%
+		status = fmt.Sprintf("⚠ %d tokens used (%d%% of %s capacity)",
+			totalTokens, usedPercent, model.CatwalkCfg.Name)
+		status = t.Base.Foreground(t.Yellow).Render(status)
+	} else if usedPercent > 50 {
+		// Info at 50%
+		status = fmt.Sprintf("ℹ %d tokens used (%d%% capacity)",
+			totalTokens, usedPercent)
+		status = t.Subtle.Render(status)
+	}
+
+	return status
 }
 
 // cacheSidebarLogo renders and caches the sidebar logo at the specified width.
@@ -3042,6 +3264,10 @@ func (m *UI) openDialog(id string) tea.Cmd {
 		if cmd := m.openQuitDialog(); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
+	case dialog.InjectionID:
+		if cmd := m.openInjectionDialog(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 	default:
 		// Unknown dialog
 		break
@@ -3162,6 +3388,74 @@ func (m *UI) openFilesDialog() tea.Cmd {
 	return cmd
 }
 
+func (m *UI) openSplitChatDialog() tea.Cmd {
+	if m.dialog.ContainsDialog(dialog.SplitChatID) {
+		m.dialog.BringToFront(dialog.SplitChatID)
+		return nil
+	}
+	s := dialog.NewSplitChat(m.com)
+	m.dialog.OpenDialog(s)
+	return nil
+}
+
+func (m *UI) openFileExplorerDialog() tea.Cmd {
+	if m.dialog.ContainsDialog(dialog.FileExplorerID) {
+		m.dialog.BringToFront(dialog.FileExplorerID)
+		return nil
+	}
+	fe := dialog.NewFileExplorer(m.com)
+	m.dialog.OpenDialog(fe)
+	return nil
+}
+
+func (m *UI) openTTSDialog() tea.Cmd {
+	if m.dialog.ContainsDialog(dialog.TTSID) {
+		m.dialog.BringToFront(dialog.TTSID)
+		return nil
+	}
+	t := dialog.NewTTS(m.com)
+	m.dialog.OpenDialog(t)
+	return t.Init()
+}
+
+// openInjectionDialog opens the context injection control dialog.
+// Takes a snapshot of the current working directory on first open.
+func (m *UI) openInjectionDialog() tea.Cmd {
+	if m.dialog.ContainsDialog(dialog.InjectionID) {
+		m.dialog.BringToFront(dialog.InjectionID)
+		return nil
+	}
+
+	// Take a fresh snapshot of the working directory.
+	snap, err := snapshot.TakeSnapshot(m.com.Workspace.WorkingDir())
+	if err != nil {
+		slog.Error("failed to take snapshot for injection dialog", "error", err, "workdir", m.com.Workspace.WorkingDir())
+		return util.ReportError(fmt.Errorf("failed to scan directory for context injection: %w", err))
+	}
+	m.injectionSnapshot = snap
+	slog.Info("snapshot taken for injection", "files", snap.FileCount(), "snapshot_id", snap.ID)
+
+	inj := dialog.NewInjection(m.com, snap)
+	m.dialog.OpenDialog(inj)
+	return nil
+}
+
+// openPlayerDialog opens the YouTube mini player dialog.
+func (m *UI) openPlayerDialog() tea.Cmd {
+	if m.dialog.ContainsDialog(dialog.PlayerID) {
+		m.dialog.BringToFront(dialog.PlayerID)
+		return nil
+	}
+
+	if m.mpvPlayer == nil {
+		return util.ReportError(fmt.Errorf("player not initialized"))
+	}
+
+	playerDialog := dialog.NewPlayer(m.com, m.mpvPlayer)
+	m.dialog.OpenDialog(playerDialog)
+	return nil
+}
+
 // openPermissionsDialog opens the permissions dialog for a permission request.
 func (m *UI) openPermissionsDialog(perm permission.PermissionRequest) tea.Cmd {
 	// Close any existing permissions dialog first.
@@ -3199,13 +3493,26 @@ func (m *UI) handlePermissionNotification(notification permission.PermissionNoti
 func (m *UI) handleAgentNotification(n notify.Notification) tea.Cmd {
 	switch n.Type {
 	case notify.TypeAgentFinished:
-		return m.sendNotification(notification.Notification{
+		if m.session == nil || n.SessionID != m.session.ID {
+			m.completedBgSessions = append(m.completedBgSessions, n)
+		}
+		cmd := m.sendNotification(notification.Notification{
 			Title:   "Crush is waiting...",
 			Message: fmt.Sprintf("Agent's turn completed in \"%s\"", n.SessionTitle),
 		})
+		if len(m.completedBgSessions) > 0 && m.tabAnimFrame == 0 {
+			return tea.Batch(cmd, tickTabAnim())
+		}
+		return cmd
 	default:
 		return nil
 	}
+}
+
+func tickTabAnim() tea.Cmd {
+	return tea.Tick(time.Second/10, func(t time.Time) tea.Msg {
+		return tabAnimTickMsg{}
+	})
 }
 
 // newSession clears the current session state and prepares for a new session.

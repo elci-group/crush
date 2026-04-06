@@ -16,28 +16,31 @@ import (
 	"github.com/charmbracelet/crush/internal/home"
 	"github.com/charmbracelet/crush/internal/shell"
 	"github.com/charmbracelet/crush/internal/skills"
+	"github.com/charmbracelet/crush/internal/snapshot"
 )
 
 // Prompt represents a template-based prompt generator.
 type Prompt struct {
-	name       string
-	template   string
-	now        func() time.Time
-	platform   string
-	workingDir string
+	name             string
+	template         string
+	now              func() time.Time
+	platform         string
+	workingDir       string
+	injectionContext string
 }
 
 type PromptDat struct {
-	Provider      string
-	Model         string
-	Config        config.Config
-	WorkingDir    string
-	IsGitRepo     bool
-	Platform      string
-	Date          string
-	GitStatus     string
-	ContextFiles  []ContextFile
-	AvailSkillXML string
+	Provider         string
+	Model            string
+	Config           config.Config
+	WorkingDir       string
+	IsGitRepo        bool
+	Platform         string
+	Date             string
+	GitStatus        string
+	ContextFiles     []ContextFile
+	AvailSkillXML    string
+	InjectionContext string // snapshot-based context from the injection control pane
 }
 
 type ContextFile struct {
@@ -62,6 +65,13 @@ func WithPlatform(platform string) Option {
 func WithWorkingDir(workingDir string) Option {
 	return func(p *Prompt) {
 		p.workingDir = workingDir
+	}
+}
+
+// WithInjectionContext sets the snapshot-based injection context string.
+func WithInjectionContext(ctx string) Option {
+	return func(p *Prompt) {
+		p.injectionContext = ctx
 	}
 }
 
@@ -202,14 +212,15 @@ func (p *Prompt) promptData(ctx context.Context, provider, model string, store *
 
 	isGit := isGitRepo(store.WorkingDir())
 	data := PromptDat{
-		Provider:      provider,
-		Model:         model,
-		Config:        *cfg,
-		WorkingDir:    filepath.ToSlash(workingDir),
-		IsGitRepo:     isGit,
-		Platform:      platform,
-		Date:          p.now().Format("1/2/2006"),
-		AvailSkillXML: availSkillXML,
+		Provider:         provider,
+		Model:            model,
+		Config:           *cfg,
+		WorkingDir:       filepath.ToSlash(workingDir),
+		IsGitRepo:        isGit,
+		Platform:         platform,
+		Date:             p.now().Format("1/2/2006"),
+		AvailSkillXML:    availSkillXML,
+		InjectionContext: cmp.Or(p.injectionContext, snapshot.ActiveContext()),
 	}
 	if isGit {
 		var err error

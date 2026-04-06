@@ -70,6 +70,7 @@ type KeyMap struct {
 	FileExplorer key.Binding
 	Injection    key.Binding
 	Delegation   key.Binding
+	Player       key.Binding
 	TTS          key.Binding
 	Tab          key.Binding
 }
@@ -123,6 +124,10 @@ func DefaultKeyMap() KeyMap {
 		Delegation: key.NewBinding(
 			key.WithKeys("ctrl+d"),
 			key.WithHelp("ctrl+d", "task delegation"),
+		),
+		Player: key.NewBinding(
+			key.WithKeys("ctrl+y"),
+			key.WithHelp("ctrl+y", "youtube player"),
 		),
 		TTS: key.NewBinding(
 			key.WithKeys("ctrl+u"),

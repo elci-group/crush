@@ -392,7 +392,36 @@ type Config struct {
 
 	Tools Tools `json:"tools,omitzero" jsonschema:"description=Tool configurations"`
 
+	TTS *TTSConfig `json:"tts,omitempty" jsonschema:"description=Text-to-Speech configurations"`
+	STT *STTConfig `json:"stt,omitempty" jsonschema:"description=Speech-to-Text configurations"`
+
 	Agents map[string]Agent `json:"-"`
+}
+
+type TTSConfig struct {
+	Enabled         bool     `json:"enabled"`
+	Provider        string   `json:"provider,omitempty"`
+	ElevenLabsKey   string   `json:"elevenlabs_key,omitempty"`
+	ElevenLabsVoice string   `json:"elevenlabs_voice,omitempty"`
+	GroqKey         string   `json:"groq_key,omitempty"`
+	GeminiKey       string   `json:"gemini_key,omitempty"`
+	OpenAIKey       string   `json:"openai_key,omitempty"`
+	OpenAIURL       string   `json:"openai_url,omitempty"`
+	OpenAIModel     string   `json:"openai_model,omitempty"`
+	OpenAIVoice     string   `json:"openai_voice,omitempty"`
+	ProviderRanking []string `json:"provider_ranking,omitempty"`
+	Personality     string   `json:"personality,omitempty"`
+	SequesterKeys   bool     `json:"sequester_keys"`
+}
+
+type STTConfig struct {
+	Enabled        bool   `json:"enabled"`
+	Provider       string `json:"provider,omitempty"`
+	OpenAIKey      string `json:"openai_key,omitempty"`
+	GroqKey        string `json:"groq_key,omitempty"`
+	OpenAIURL      string `json:"openai_url,omitempty"`
+	OpenAIModel    string `json:"openai_model,omitempty"`
+	FasterWhisper  string `json:"faster_whisper,omitempty"`
 }
 
 func (c *Config) EnabledProviders() []ProviderConfig {
@@ -476,6 +505,7 @@ func allToolNames() []string {
 		"grep",
 		"ls",
 		"sourcegraph",
+		"furnace",
 		"todos",
 		"view",
 		"write",
@@ -493,7 +523,7 @@ func resolveAllowedTools(allTools []string, disabledTools []string) []string {
 }
 
 func resolveReadOnlyTools(tools []string) []string {
-	readOnlyTools := []string{"glob", "grep", "ls", "sourcegraph", "view"}
+	readOnlyTools := []string{"glob", "grep", "ls", "sourcegraph", "view", "furnace"}
 	// filter to only include tools that are in allowedtools (include mode)
 	return filterSlice(tools, readOnlyTools, true)
 }

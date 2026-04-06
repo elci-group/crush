@@ -16,23 +16,39 @@ import (
 // DefaultStatusTTL is the default time-to-live for status messages.
 const DefaultStatusTTL = 5 * time.Second
 
+type statusTickMsg struct{}
+
+func StatusTickCmd() tea.Cmd {
+	return tea.Tick(time.Millisecond*150, func(time.Time) tea.Msg {
+		return statusTickMsg{}
+	})
+}
+
 // Status is the status bar and help model.
 type Status struct {
-	com      *common.Common
-	hideHelp bool
-	help     help.Model
-	helpKm   help.KeyMap
-	msg      util.InfoMsg
+	com          *common.Common
+	hideHelp     bool
+	helpKm       help.KeyMap
+	msg          util.InfoMsg
+	tickerOffset int
+	width        int
 }
 
 // NewStatus creates a new status bar and help model.
 func NewStatus(com *common.Common, km help.KeyMap) *Status {
 	s := new(Status)
 	s.com = com
-	s.help = help.New()
-	s.help.Styles = com.Styles.Help
 	s.helpKm = km
 	return s
+}
+
+func (s *Status) Update(msg tea.Msg) tea.Cmd {
+	switch msg.(type) {
+	case statusTickMsg:
+		s.tickerOffset++
+		return StatusTickCmd()
+	}
+	return nil
 }
 
 // SetInfoMsg sets the status info message.
@@ -47,19 +63,17 @@ func (s *Status) ClearInfoMsg() {
 
 // SetWidth sets the width of the status bar and help view.
 func (s *Status) SetWidth(width int) {
-	helpStyle := s.com.Styles.Status.Help
-	horizontalPadding := helpStyle.GetPaddingLeft() + helpStyle.GetPaddingRight()
-	s.help.SetWidth(width - horizontalPadding)
+	s.width = width
 }
 
 // ShowingAll returns whether the full help view is shown.
 func (s *Status) ShowingAll() bool {
-	return s.help.ShowAll
+	return false
 }
 
 // ToggleHelp toggles the full help view.
 func (s *Status) ToggleHelp() {
-	s.help.ShowAll = !s.help.ShowAll
+	// No-op for scrolling ticker
 }
 
 // SetHideHelp sets whether the app is on the onboarding flow.
@@ -67,11 +81,93 @@ func (s *Status) SetHideHelp(hideHelp bool) {
 	s.hideHelp = hideHelp
 }
 
+var descEmojis = map[string]string{
+	"quit":          "🛑",
+	"more":          "➕",
+	"commands":      "🛠️",
+	"models":        "🧠",
+	"suspend":       "💤",
+	"sessions":      "📂",
+	"tabs menu":     "📑",
+	"prev tab":      "⏪",
+	"next tab":      "⏩",
+	"file explorer": "📁",
+	"tts settings":  "🔊",
+	"change focus":  "🔁",
+	"add file":      "📄",
+	"send":          "🚀",
+	"open editor":   "📝",
+	"newline":       "⏎",
+	"add image":     "🖼️",
+	"cancel":        "🚫",
+}
+
 // Draw draws the status bar onto the screen.
 func (s *Status) Draw(scr uv.Screen, area uv.Rectangle) {
 	if !s.hideHelp {
-		helpView := s.com.Styles.Status.Help.Render(s.help.View(s.helpKm))
-		uv.NewStyledString(helpView).Draw(scr, area)
+		// Build the ticker string
+		var parts []string
+		binds := s.helpKm.ShortHelp()
+
+		keyStyle := s.com.Styles.Base.Foreground(s.com.Styles.Primary).Bold(true)
+		descStyle := s.com.Styles.Base.Foreground(s.com.Styles.Secondary)
+		sepStyle := s.com.Styles.Muted
+
+		for _, b := range binds {
+			if !b.Enabled() {
+				continue
+			}
+			keys := b.Keys()
+			if len(keys) == 0 {
+				continue
+			}
+			desc := b.Help().Desc
+
+			// Replace keys with symbols if possible
+			keyStr := strings.Join(keys, "/")
+			keyStr = strings.ReplaceAll(keyStr, "ctrl+", "⌃")
+			keyStr = strings.ReplaceAll(keyStr, "shift+", "⇧")
+			keyStr = strings.ReplaceAll(keyStr, "alt+", "⌥")
+			keyStr = strings.ReplaceAll(keyStr, "enter", "↵")
+			keyStr = strings.ReplaceAll(keyStr, "tab", "⇥")
+			keyStr = strings.ReplaceAll(keyStr, "esc", "⎋")
+			keyStr = strings.ReplaceAll(keyStr, "up", "↑")
+			keyStr = strings.ReplaceAll(keyStr, "down", "↓")
+			keyStr = strings.ReplaceAll(keyStr, "left", "←")
+			keyStr = strings.ReplaceAll(keyStr, "right", "→")
+
+			emoji := descEmojis[strings.ToLower(desc)]
+			if emoji == "" {
+				emoji = "✨"
+			}
+
+			part := keyStyle.Render(keyStr) + " " + descStyle.Render(desc) + " " + emoji
+			parts = append(parts, part)
+		}
+
+		fullStr := strings.Join(parts, sepStyle.Render(" • "))
+
+		// Render scrolling ticker
+		visibleWidth := area.Dx() - s.com.Styles.Status.Help.GetPaddingLeft() - s.com.Styles.Status.Help.GetPaddingRight()
+		if visibleWidth > 0 && len(fullStr) > 0 {
+			cleanStr := ansi.Strip(fullStr)
+			strLen := ansi.StringWidth(cleanStr)
+
+			separator := sepStyle.Render(" | ")
+			// We append the string to itself with a separator to allow continuous scrolling
+			scrollingStr := fullStr + separator + fullStr + separator + fullStr
+
+			offset := s.tickerOffset % (strLen + 3) // +3 for the " | " separator
+
+			// Truncate from left up to offset
+			truncLeft := ansi.TruncateLeft(scrollingStr, offset, "")
+
+			// Then truncate from right up to visible width
+			finalStr := ansi.Truncate(truncLeft, visibleWidth, "")
+
+			finalStr = s.com.Styles.Status.Help.Render(finalStr)
+			uv.NewStyledString(finalStr).Draw(scr, area)
+		}
 	}
 
 	// Render notifications

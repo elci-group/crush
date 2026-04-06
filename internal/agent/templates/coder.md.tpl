@@ -394,3 +394,8 @@ If a skill mentions scripts, references, or assets, they are placed in the same 
 {{end}}
 </memory>
 {{end}}
+{{if .InjectionContext}}
+<project_snapshot>
+{{.InjectionContext}}
+</project_snapshot>
+{{end}}

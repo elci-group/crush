@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/crush/internal/agent/notify"
 	"github.com/charmbracelet/crush/internal/config"
 	"github.com/charmbracelet/crush/internal/fsext"
 	"github.com/charmbracelet/crush/internal/session"
@@ -51,6 +52,8 @@ func (h *header) drawHeader(
 	compact bool,
 	detailsOpen bool,
 	width int,
+	completedBgSessions []notify.Notification,
+	tabAnimFrame int,
 ) {
 	t := h.com.Styles
 	if width != h.width || compact != h.compact {
@@ -85,24 +88,53 @@ func (h *header) drawHeader(
 		availDetailWidth,
 	)
 
+	// Build the center title
+	titleStr := session.Title
+	if titleStr == "" {
+		titleStr = "New Session"
+	}
+	leftArrow := "◀ "
+	rightArrow := " ▶"
+
+	var centerTitle string
+	if len(completedBgSessions) > 0 {
+		bgTitle := completedBgSessions[len(completedBgSessions)-1].SessionTitle
+		if bgTitle == "" {
+			bgTitle = "Task Complete"
+		}
+		maxOffset := 10
+		offset := tabAnimFrame % maxOffset
+		pad := strings.Repeat(" ", offset)
+		centerTitle = fmt.Sprintf("%s%s %s   %s   %s %s%s", leftArrow, pad, bgTitle, titleStr, bgTitle, pad, rightArrow)
+	} else {
+		centerTitle = fmt.Sprintf("%s %s %s", leftArrow, titleStr, rightArrow)
+	}
+	centerTitle = t.Header.WorkingDir.Render(centerTitle)
+
 	remainingWidth := width -
 		lipgloss.Width(b.String()) -
 		lipgloss.Width(details) -
+		lipgloss.Width(centerTitle) -
 		leftPadding -
 		rightPadding -
 		diagToDetailsSpacing
 
 	if remainingWidth > 0 {
-		b.WriteString(t.Header.Diagonals.Render(
-			strings.Repeat(headerDiag, max(minHeaderDiags, remainingWidth)),
-		))
+		leftPad := remainingWidth / 2
+		rightPad := remainingWidth - leftPad
+		b.WriteString(t.Header.Diagonals.Render(strings.Repeat(headerDiag, leftPad)))
+		b.WriteString(centerTitle)
+		b.WriteString(t.Header.Diagonals.Render(strings.Repeat(headerDiag, rightPad)))
+		b.WriteString(" ")
+	} else {
+		b.WriteString(centerTitle)
 		b.WriteString(" ")
 	}
 
 	b.WriteString(details)
 
 	view := uv.NewStyledString(
-		t.Base.Padding(0, rightPadding, 0, leftPadding).Render(b.String()))
+		t.Base.Padding(0, rightPadding, 0, leftPadding).Render(ansi.Truncate(b.String(), width, "…")))
 	view.Draw(scr, area)
 }
 
