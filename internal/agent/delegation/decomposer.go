@@ -56,7 +56,11 @@ func (d *Decomposer) AnalyzeTask(ctx context.Context, taskDescription string) (*
 
 	// Task is suitable for delegation - create plan
 	analysis.CanDecompose = true
-	analysis.Confidence = min(95, 60+complexityScore)
+	confScore := 60 + complexityScore
+	if confScore > 95 {
+		confScore = 95
+	}
+	analysis.Confidence = confScore
 	analysis.Reason = fmt.Sprintf("Task is complex (%d/10) and spans %d independent modules - well-suited for parallel delegation", complexityScore, len(modules))
 
 	// Generate delegation plan
@@ -117,7 +121,13 @@ func (d *Decomposer) assessComplexity(task string) int {
 		}
 	}
 
-	return max(1, min(10, score))
+	if score < 1 {
+		return 1
+	}
+	if score > 10 {
+		return 10
+	}
+	return score
 }
 
 // identifyModules extracts likely module/component names from task description.
@@ -184,7 +194,10 @@ func (d *Decomposer) createPlan(taskDescription string, modules []string, availa
 	}
 
 	// Distribute modules across available models
-	numTasks := min(len(modules), len(availableModels))
+	numTasks := len(modules)
+	if numTasks > len(availableModels) {
+		numTasks = len(availableModels)
+	}
 
 	for i := 0; i < numTasks; i++ {
 		module := modules[i]
@@ -251,18 +264,4 @@ func (d *Decomposer) ValidatePlan(plan *DelegationPlan) (bool, []string) {
 	}
 
 	return len(issues) == 0, issues
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
