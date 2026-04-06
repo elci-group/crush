@@ -23,9 +23,9 @@
 - **Industrial Grade:** built on the Charm ecosystem, powering 25k+ applications, from leading open source projects to business-critical infrastructure
 
 ### Advanced Features (Kaptaind-Crush)
-- **Task Delegation:** decompose complex tasks into independent sub-tasks, assign to different models, and execute concurrently on isolated git branches with automatic conflict prevention
-- **Context Injection:** snapshot-based file selection with multi-resolution context levels (tree summary, file summaries, full content) and intelligent token budgeting
-- **Smart Chunking:** automatic text splitting with contextual headers/footers for large files across multiple model context windows
+- **Automatic Task Delegation:** intelligent delegatability scoring on every task with self-calibrating model selection, automatic decomposition for high-scoring tasks across isolated git branches
+- **Smart Context Injection:** snapshot-based file selection with multi-resolution context levels (tree summary, file summaries, full content) and intelligent token budgeting
+- **Intelligent Text Chunking:** automatic text splitting with contextual headers/footers for large files across multiple model context windows
 - **YouTube Integration:** built-in mini player for watching videos while coding (audio-only mode via mpv)
 - **Speech Features:** text-to-speech for code reading and speech-to-text for hands-free input
 
@@ -230,84 +230,97 @@ Crush’s default model listing is managed in [Catwalk](https://github.com/charm
 
 <a href="https://github.com/charmbracelet/catwalk"><img width="174" height="174" alt="Catwalk Badge" src="https://github.com/user-attachments/assets/95b49515-fe82-4409-b10d-5beb0873787d" /></a>
 
-## Task Delegation (Beta)
+## Task Delegation
 
-> [!NOTE]
-> Task delegation is currently in beta and disabled by default. This feature is still being refined and integrated into the main agent loop.
+For complex coding tasks that span multiple modules or components, Crush automatically evaluates delegatability and can decompose the work across different models running concurrently on isolated git branches with automatic conflict prevention.
 
-For complex coding tasks that span multiple modules or components, Crush can decompose the work and delegate it across different models running concurrently on isolated git branches with automatic conflict prevention.
+### How It Works (Automatic)
 
-### How It Works
+When you submit a task, Crush automatically:
 
-Press `ctrl+d` to analyze a task for delegation suitability. Crush will:
+1. **Scores Delegatability** using 6 weighted factors:
+   - **Modularity** (0.25): Can task split into isolated file scopes?
+   - **Independence** (0.2): Can sub-tasks execute in parallel without blocking?
+   - **Surface Area** (0.15): How many modules/directories are affected?
+   - **Parallel Efficiency** (0.2): Expected speedup from concurrency?
+   - **Cognitive Load** (0.2): Reasoning depth required?
+   - **Coupling Risk** (0.3 negative): Likelihood of merge conflicts?
 
-1. **Analyze** the task for complexity and identify independent modules
-2. **Propose** a delegation plan showing task breakdown and assigned models
-3. **Review** the plan with confidence score, model assignments, and scope details
-4. **Approve** the plan with optional modifications
-5. **Execute** sub-tasks concurrently on isolated git branches with progress tracking
-6. **Merge** results back to main with dependency-aware ordering and conflict resolution
+2. **Computes Recommendation** based on delegatability score D ∈ [0,1]:
+   - **D ≥ 0.6**: `DELEGATE` - Run with parallel execution (3+ agents)
+   - **0.45 ≤ D < 0.6**: `DELEGATE_WITH_CAUTION` - Delegate with merged conflict mitigation
+   - **0.3 ≤ D < 0.45**: `STAGED_EXECUTION` - Sequential sub-task execution
+   - **D < 0.3**: `SINGLE_AGENT_EXECUTION` - Handle as unified task
 
-### Workflow Examples
+3. **Detects Anti-Patterns** that prevent delegation:
+   - Global state mutation
+   - Cross-cutting concerns (logging, config)
+   - Tightly coupled refactoring
+   - Unclear module boundaries
 
-#### Example 1: Authentication Refactor
-For a task like "refactor authentication system to support OAuth and add API rate limiting," Crush might propose:
+4. **Selects Optimal Models** for each sub-task using fitness scoring:
+   - Reasoning capability match
+   - Latency tolerance
+   - Cost-benefit ratio
+   - Historical success on similar tasks
+   - Context window sufficiency
 
-```
-Original Task: "Refactor authentication system to support OAuth and add API rate limiting"
-Complexity: 8/10
-Confidence: 92%
+5. **Presents Decision** with transparency:
+   ```
+   Delegatability: HIGH (0.87)
+   → Recommended: Parallel execution (3 agents)
+   
+   [ Preview Plan ]
+   [ Run Delegation ]
+   [ Force Single Agent ]
+   ```
 
-Proposed Sub-Tasks:
-├─ Task 1: OAuth implementation
-│  ├─ Assigned to: GPT-4 (OpenAI)
-│  ├─ Branch: feature/oauth-1234567890
-│  └─ Scope: internal/auth/oauth/**
-├─ Task 2: Rate limiting middleware  
-│  ├─ Assigned to: Claude 3.5 (Anthropic)
-│  ├─ Branch: feature/ratelimit-1234567890
-│  └─ Scope: internal/middleware/ratelimit/**
-└─ Task 3: Integration tests
-   ├─ Assigned to: GPT-4 (OpenAI)
-   ├─ Branch: feature/auth-tests-1234567890
-   └─ Scope: tests/auth/**
-```
+6. **Executes** sub-tasks concurrently on isolated git branches
+7. **Merges** results with dependency-aware ordering
 
-Each task runs independently with automatic file scope separation to prevent merge conflicts. Tasks complete in parallel and merge sequentially based on dependencies.
+### Self-Calibrating System
 
-#### Example 2: API Enhancement
-Task: "Add user profile endpoints with validation, caching, and documentation"
+The delegation system learns over time:
 
-```
-Sub-Tasks:
-├─ API endpoints implementation
-│  └─ Scope: internal/api/users/**
-├─ Input validation layer
-│  └─ Scope: internal/validation/**
-├─ Redis caching integration
-│  └─ Scope: internal/cache/**
-└─ API documentation
-   └─ Scope: docs/api/**
-```
+- **Records** actual outcomes (merge conflicts, time, tokens, success rate)
+- **Computes** DelegationEffectiveness = actual benefit vs. cost
+- **Adjusts** factor weights based on correlation with success
+- **Recalibrates** delegation threshold automatically
+- **Improves** model assignment based on historical performance
+
+If delegation frequently fails, the system increases the threshold. If it consistently succeeds, it lowers it. This creates a feedback loop where the planner becomes a delegation specialist.
+
+### Example Scenarios
+
+**High Delegatability (D > 0.75):**
+- "Refactor authentication system to support OAuth and add API rate limiting"
+  - Multiple independent modules: OAuth, rate limiting, integration tests
+  - Clear scope separation: auth/*, middleware/*, tests/*
+  - Parallelizable: changes don't interfere
+  - → Recommendation: DELEGATE across 3 agents
+
+**Medium Delegatability (0.45 < D < 0.75):**
+- "Update API with caching layer and new endpoints"
+  - Moderate module isolation but some shared interfaces
+  - Small coupling risk through response formats
+  - → Recommendation: DELEGATE_WITH_CAUTION
+
+**Low Delegatability (D < 0.45):**
+- "Refactor global config system across all modules"
+  - High coupling (touches auth, logging, database, API)
+  - Cross-cutting concern (hard to isolate)
+  - → Recommendation: SINGLE_AGENT_EXECUTION
 
 ### Key Features
 
-- **Intelligent Decomposition:** keyword-based complexity analysis (1-10 scale) and automatic module identification from task description
-- **Multi-Model Assignment:** distribute tasks across different models and providers based on their strengths
-- **Concurrent Execution:** sub-agents work in parallel on isolated git branches at true concurrency
-- **Conflict Prevention:** scope-based file assignment with automatic overlap detection prevents merge conflicts
-- **Dependency Awareness:** tasks can depend on each other; merge order respects these dependencies
-- **Progress Tracking:** real-time monitoring with token usage, completion percentages, and step-by-step progress
-- **User Approval:** review and optionally modify plans before execution
-- **Auto-Merge Resolution:** multiple conflict resolution strategies (abort, manual review, or automatic with agent-decides mode)
-
-### When to Use Delegation
-
-Delegation works best for tasks with:
-- **Multiple independent modules** (authentication, caching, validation, tests)
-- **Clear separation of concerns** (API layer, middleware, persistence, UI)
-- **Moderate to high complexity** (complexity score 6+)
-- **No hard inter-task dependencies** (or clear ordering)
+- **Automatic Evaluation:** every task scored instantly, no manual trigger needed
+- **Transparent Scoring:** see delegatability breakdown with confidence levels
+- **Smart Model Assignment:** best model selected for each sub-task based on 6 fitness factors
+- **Self-Calibrating:** learns from outcomes and adjusts thresholds continuously
+- **Conflict Prevention:** scope-based file assignment prevents merge conflicts
+- **Dependency Awareness:** respects task ordering and sequential requirements
+- **One-Click Override:** "Force Single Agent" option always available
+- **Cost-Aware:** routes based on token budget and model specialization
 
 ## Keyboard Shortcuts
 
@@ -344,14 +357,52 @@ Delegation works best for tasks with:
 | `ctrl+y` | YouTube mini player |
 
 ### Advanced Features
-| Shortcut | Feature | Description |
-|----------|---------|-------------|
-| `ctrl+i` | Injection | Select files with multi-resolution context (tree → summaries → full content) |
-| `ctrl+f` | Attachments | Attach files with automatic smart chunking for large files |
-| `ctrl+y` | Player | Integrated YouTube mini player (audio-only via mpv) |
-| `ctrl+u` | Speech | Text-to-speech and speech-to-text integration |
+| Feature | Trigger | Description |
+|---------|---------|-------------|
+| **Task Delegation** | Automatic | Every task auto-evaluated for delegatability on submission |
+| **Context Injection** | `ctrl+i` | Select files with multi-resolution context (tree → summaries → full content) |
+| **Attachments** | `ctrl+f` | Attach files with automatic smart chunking for large files |
+| **YouTube Player** | `ctrl+y` | Integrated mini player (audio-only via mpv) |
+| **Speech** | `ctrl+u`/`ctrl+r` | Text-to-speech and speech-to-text integration |
 
 ## Advanced Features (Kaptaind-Crush Specific)
+
+### Automatic Task Delegation
+
+The system evaluates every task for delegatability on submission:
+
+**Delegatability Scoring Model:**
+```
+D = 0.25×Modularity + 0.2×Independence + 0.15×SurfaceArea 
+    + 0.2×ParallelEfficiency + 0.2×CognitiveLoad - 0.3×CouplingRisk
+```
+
+**Self-Calibrating Learning:**
+- System records actual execution outcomes (merge conflicts, time, tokens)
+- Computes effectiveness: actual benefit vs. cost
+- Automatically adjusts:
+  - Factor weights based on success correlation
+  - Delegation threshold (starts at 0.6, adapts over time)
+  - Model assignment strategy
+- Over time, becomes a delegation specialist for your codebase
+
+**Model Fitness Scoring:**
+Each model evaluated on 6 dimensions for each sub-task:
+- Reasoning capability
+- Latency tolerance
+- Cost-benefit ratio
+- Domain specialization
+- Historical success rate
+- Context window sufficiency
+
+Best model automatically assigned to each decomposed task.
+
+**Anti-Pattern Detection:**
+Automatically detects and avoids delegation for:
+- Global state mutations
+- Cross-cutting concerns (logging, config)
+- Tightly coupled refactoring
+- Shared interfaces across modules
 
 ### Context Injection with Snapshots (`ctrl+i`)
 
