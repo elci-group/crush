@@ -122,8 +122,8 @@ func DefaultKeyMap() KeyMap {
 			key.WithHelp("ctrl+i", "context injection"),
 		),
 		Delegation: key.NewBinding(
-			key.WithKeys(""), // Disabled - feature not fully integrated
-			key.WithHelp("", ""),
+			key.WithKeys("ctrl+d"),
+			key.WithHelp("ctrl+d", "task delegation"),
 		),
 		Player: key.NewBinding(
 			key.WithKeys("ctrl+y"),

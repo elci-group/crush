@@ -26,6 +26,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/catwalk/pkg/catwalk"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/crush/internal/agent/delegation"
 	"github.com/charmbracelet/crush/internal/agent/notify"
 	agenttools "github.com/charmbracelet/crush/internal/agent/tools"
 	"github.com/charmbracelet/crush/internal/agent/tools/mcp"
@@ -1773,6 +1774,11 @@ func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 				cmds = append(cmds, cmd)
 			}
 			return true
+		case key.Matches(msg, m.keyMap.Delegation):
+			if cmd := m.openDelegationDialog(); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+			return true
 		case key.Matches(msg, m.keyMap.Chat.Details) && m.isCompact:
 			m.detailsOpen = !m.detailsOpen
 			m.updateLayoutAndSize()
@@ -2324,6 +2330,7 @@ func (m *UI) ShortHelp() []key.Binding {
 			commands,
 			k.Models,
 			k.Injection,
+			k.Delegation,
 			k.Player,
 		)
 
@@ -2408,6 +2415,7 @@ func (m *UI) FullHelp() [][]key.Binding {
 			k.Models,
 			k.Sessions,
 			k.Injection,
+			k.Delegation,
 			k.Player,
 		)
 		if hasSession {
@@ -2468,6 +2476,7 @@ func (m *UI) FullHelp() [][]key.Binding {
 					k.Models,
 					k.Sessions,
 					k.Injection,
+					k.Delegation,
 					k.Player,
 				},
 			)
@@ -3453,6 +3462,38 @@ func (m *UI) openPlayerDialog() tea.Cmd {
 
 	playerDialog := dialog.NewPlayer(m.com, m.mpvPlayer)
 	m.dialog.OpenDialog(playerDialog)
+	return nil
+}
+
+// openDelegationDialog opens the task delegation plan review dialog.
+func (m *UI) openDelegationDialog() tea.Cmd {
+	if m.dialog.ContainsDialog(dialog.DelegationID) {
+		m.dialog.BringToFront(dialog.DelegationID)
+		return nil
+	}
+
+	// Check if there's an active delegation coordinator with a plan
+	if m.delegation == nil || m.delegation.Coordinator == nil {
+		return util.ReportError(fmt.Errorf("no active delegation plan"))
+	}
+
+	status := m.delegation.Coordinator.GetStatus()
+	if status.Plan == nil || len(status.Plan.SubTasks) == 0 {
+		return util.ReportError(fmt.Errorf("no sub-tasks in delegation plan"))
+	}
+
+	plan := status.Plan
+
+	// Create analysis from the existing plan
+	analysis := &delegation.DecompositionAnalysis{
+		CanDecompose: len(plan.SubTasks) > 0,
+		Reason:       plan.Rationale,
+		ProposedPlan: plan,
+		Confidence:   75, // Default confidence for active plans
+	}
+
+	delegationDialog := dialog.NewDelegationDialog(analysis)
+	m.dialog.OpenDialog(delegationDialog)
 	return nil
 }
 

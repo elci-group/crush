@@ -163,32 +163,25 @@ func (d *DelegationDialog) Render(width, height int) string {
 	sb.WriteString(fmt.Sprintf("Rationale: %s\n\n", d.Analysis.Reason))
 
 	// Sub-tasks overview
-	sb.WriteString("Sub-tasks: ")
-	sb.WriteString(fmt.Sprintf("%d parallel modules\n", len(plan.SubTasks)))
-	sb.WriteString(strings.Repeat("─", 40))
+	sb.WriteString(fmt.Sprintf("Scheduling %d agents in parallel:\n", len(plan.SubTasks)))
+	sb.WriteString(strings.Repeat("─", width-2))
+	sb.WriteString("\n\n")
+
+	// Model assignment breakdown table
+	sb.WriteString(d.renderModelAssignmentTable(plan, width))
+
+	sb.WriteString("\n")
+	sb.WriteString(strings.Repeat("─", width-2))
 	sb.WriteString("\n\n")
 
 	// Render selected task details
 	if d.selectedTask < len(plan.SubTasks) {
 		task := plan.SubTasks[d.selectedTask]
 		sb.WriteString(d.renderTaskDetail(&task))
+		sb.WriteString("\n\n")
+		sb.WriteString(strings.Repeat("─", width-2))
+		sb.WriteString("\n\n")
 	}
-
-	sb.WriteString("\n")
-	sb.WriteString(strings.Repeat("─", 40))
-	sb.WriteString("\n\n")
-
-	// Task list
-	sb.WriteString("Tasks:\n")
-	for i, task := range plan.SubTasks {
-		prefix := "  "
-		if i == d.selectedTask {
-			prefix = "▶ "
-		}
-		sb.WriteString(fmt.Sprintf("%s[%d] %s (%s)\n", prefix, i+1, task.Title, task.AssignedProvider))
-	}
-
-	sb.WriteString("\n")
 
 	// Modifications input
 	if d.modifyMode {
@@ -214,26 +207,159 @@ func (d *DelegationDialog) Render(width, height int) string {
 	return sb.String()
 }
 
+// renderModelAssignmentTable displays model-to-task assignments in a table format.
+func (d *DelegationDialog) renderModelAssignmentTable(plan *delegation.DelegationPlan, width int) string {
+	var sb strings.Builder
+
+	// Column widths (approximately)
+	modelCol := 20
+	taskCol := 25
+	complexityCol := 4
+	filesCol := width - modelCol - taskCol - complexityCol - 8
+
+	if filesCol < 10 {
+		filesCol = 10
+	}
+
+	// Header row
+	headerStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("7")). // white
+		Background(lipgloss.Color("8"))  // dark gray
+
+	header := fmt.Sprintf("%-*s │ %-*s │ Cplx │ %-*s",
+		modelCol, "Model",
+		taskCol, "Task",
+		filesCol, "Files")
+
+	sb.WriteString(headerStyle.Render(header))
+	sb.WriteString("\n")
+
+	// Separator
+	separator := strings.Repeat("─", modelCol) + "─┼─" + strings.Repeat("─", taskCol) + "─┼──────┼─" + strings.Repeat("─", filesCol)
+	sepLen := min(len(separator), width)
+	sb.WriteString(separator[:sepLen])
+	sb.WriteString("\n")
+
+	// Task rows
+	for i, task := range plan.SubTasks {
+		// Model info (provider + model name)
+		modelStr := fmt.Sprintf("%s:%s", task.AssignedProvider, truncate(task.AssignedModel.Model, modelCol-len(task.AssignedProvider)-2))
+
+		// Task title
+		taskStr := truncate(task.Title, taskCol)
+
+		// Complexity indicator
+		complexityStr := fmt.Sprintf("%d/10", task.EstimatedComplexity)
+
+		// File scope summary
+		var filesStr string
+		if len(task.Scope.Paths) > 0 {
+			filesStr = fmt.Sprintf("%d patterns", len(task.Scope.Paths))
+		} else {
+			filesStr = "all"
+		}
+		filesStr = truncate(filesStr, filesCol)
+
+		// Row with optional highlight if selected
+		rowStyle := lipgloss.NewStyle()
+		if i == d.selectedTask {
+			rowStyle = rowStyle.
+				Background(lipgloss.Color("4")).  // blue background
+				Foreground(lipgloss.Color("15")) // white text
+		}
+
+		row := fmt.Sprintf("%-*s │ %-*s │ %4s │ %-*s",
+			modelCol, modelStr,
+			taskCol, taskStr,
+			complexityStr,
+			filesCol, filesStr)
+
+		sb.WriteString(rowStyle.Render(row))
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
+}
+
+// truncate shortens a string to max length with ellipsis
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	if maxLen > 2 {
+		return s[:maxLen-2] + ".."
+	}
+	return s[:maxLen]
+}
+
 // renderTaskDetail displays full details of a selected sub-task.
 func (d *DelegationDialog) renderTaskDetail(task *delegation.SubTask) string {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("Task: %s\n", task.Title))
-	sb.WriteString(fmt.Sprintf("Provider: %s\n", task.AssignedProvider))
-	sb.WriteString(fmt.Sprintf("Model: %s\n", task.AssignedModel.Model))
-	sb.WriteString(fmt.Sprintf("Complexity: %d/10\n", task.EstimatedComplexity))
-	sb.WriteString(fmt.Sprintf("Branch: %s\n", task.BranchName))
+	// Title and ID
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("14"))
+	sb.WriteString(titleStyle.Render(fmt.Sprintf("Task: %s [%s]", task.Title, task.ID)))
+	sb.WriteString("\n\n")
+
+	// Model assignment (highlighted)
+	modelBoxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("5")). // magenta
+		Padding(0, 1)
+
+	modelInfo := fmt.Sprintf("Provider: %s  │  Model: %s  │  Branch: %s",
+		task.AssignedProvider,
+		task.AssignedModel.Model,
+		task.BranchName)
+	sb.WriteString(modelBoxStyle.Render(modelInfo))
+	sb.WriteString("\n\n")
+
+	// Complexity and scope summary
+	complexityBar := d.renderComplexityBar(task.EstimatedComplexity)
+	sb.WriteString(fmt.Sprintf("Complexity: %s\n", complexityBar))
 	sb.WriteString(fmt.Sprintf("Scope: %s\n", task.Scope.Description))
 
+	// File patterns
 	if len(task.Scope.Paths) > 0 {
-		sb.WriteString("Files: ")
-		sb.WriteString(strings.Join(task.Scope.Paths, ", "))
-		sb.WriteString("\n")
+		sb.WriteString("\nFile Patterns:\n")
+		for _, path := range task.Scope.Paths {
+			sb.WriteString(fmt.Sprintf("  • %s\n", path))
+		}
 	}
 
-	sb.WriteString(fmt.Sprintf("\nDescription:\n%s", indentLines(task.Description, 2)))
+	// Description
+	sb.WriteString(fmt.Sprintf("\nTask Description:\n%s", indentLines(task.Description, 2)))
 
 	return sb.String()
+}
+
+// renderComplexityBar renders a visual bar for complexity level
+func (d *DelegationDialog) renderComplexityBar(complexity int) string {
+	// Clamp complexity to 1-10
+	if complexity < 1 {
+		complexity = 1
+	}
+	if complexity > 10 {
+		complexity = 10
+	}
+
+	filled := strings.Repeat("█", complexity)
+	empty := strings.Repeat("░", 10-complexity)
+
+	var color string
+	if complexity <= 3 {
+		color = "10" // green
+	} else if complexity <= 6 {
+		color = "11" // yellow
+	} else {
+		color = "9" // red
+	}
+
+	barStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
+	return fmt.Sprintf("[%s] %d/10", barStyle.Render(filled+empty), complexity)
 }
 
 // renderNotSuitable shows why task cannot be decomposed.
