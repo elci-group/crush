@@ -3628,7 +3628,25 @@ func (m *UI) openDelegationDialog() tea.Cmd {
 		return nil
 	}
 
-	// Check if there's an active delegation with a stored plan
+	// Check if there's an active delegation coordinator (agents running)
+	if m.delegation != nil && m.delegation.IsActive() && m.delegation.Coordinator != nil {
+		status := m.delegation.Coordinator.GetStatus()
+		if status.Plan != nil && len(status.Plan.SubTasks) > 0 {
+			// Show delegation status with running agents
+			analysis := &delegation.DecompositionAnalysis{
+				CanDecompose: true,
+				Reason:       fmt.Sprintf("Delegation in progress: %d agents active, %d completed, %d failed",
+					status.ActiveCount, status.CompletedCount, status.FailedCount),
+				ProposedPlan: status.Plan,
+				Confidence:   80, // Higher confidence for active delegations
+			}
+			delegationDialog := dialog.NewDelegationDialog(analysis)
+			m.dialog.OpenDialog(delegationDialog)
+			return nil
+		}
+	}
+
+	// Check if there's a stored plan from forced delegation mode (before approval)
 	if m.delegationPlan != nil && m.delegationAnalysis != nil {
 		// Use the stored plan from forced delegation mode
 		delegationDialog := dialog.NewDelegationDialog(m.delegationAnalysis)
@@ -3636,33 +3654,8 @@ func (m *UI) openDelegationDialog() tea.Cmd {
 		return nil
 	}
 
-	// Check if there's an active delegation coordinator with a plan
-	if m.delegation == nil || m.delegation.Coordinator == nil {
-		return util.ReportError(fmt.Errorf("no active delegation plan - press ctrl+shift+d to start forced delegation"))
-	}
-
-	if !m.delegation.IsActive() {
-		return util.ReportError(fmt.Errorf("delegation not active - agents may still be running"))
-	}
-
-	status := m.delegation.Coordinator.GetStatus()
-	if status.Plan == nil || len(status.Plan.SubTasks) == 0 {
-		return util.ReportError(fmt.Errorf("delegation plan has no sub-tasks"))
-	}
-
-	plan := status.Plan
-
-	// Create analysis from the existing plan
-	analysis := &delegation.DecompositionAnalysis{
-		CanDecompose: len(plan.SubTasks) > 0,
-		Reason:       plan.Rationale,
-		ProposedPlan: plan,
-		Confidence:   75, // Default confidence for active plans
-	}
-
-	delegationDialog := dialog.NewDelegationDialog(analysis)
-	m.dialog.OpenDialog(delegationDialog)
-	return nil
+	// No active or pending delegation
+	return util.ReportError(fmt.Errorf("no active delegation - press ctrl+shift+d to start forced delegation mode"))
 }
 
 // enterForcedDelegationMode enters the forced delegation planning mode.
