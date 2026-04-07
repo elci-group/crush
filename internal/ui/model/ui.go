@@ -1674,6 +1674,23 @@ func (m *UI) handleDialogMsg(msg tea.Msg) tea.Cmd {
 			break
 		}
 		cmds = append(cmds, m.runMCPPrompt(msg.ClientID, msg.PromptID, msg.Args))
+
+	// Delegation dialog messages
+	case *dialog.ActionDelegationApproved:
+		m.dialog.CloseFrontDialog()
+		// Start delegation with the approved plan
+		if err := m.StartDelegation(msg.Plan); err != nil {
+			cmds = append(cmds, util.ReportError(err))
+		} else {
+			slog.Info("Delegation started", "plan_id", msg.Plan.ID, "sub_tasks", len(msg.Plan.SubTasks))
+		}
+
+	case *dialog.ActionDelegationRejected:
+		m.dialog.CloseFrontDialog()
+		m.delegationForcedMode = false
+		m.setState(uiChat, m.focus)
+		cmds = append(cmds, util.CmdHandler(util.NewInfoMsg("Delegation rejected: "+msg.Reason)))
+
 	default:
 		cmds = append(cmds, util.CmdHandler(msg))
 	}
@@ -3611,14 +3628,26 @@ func (m *UI) openDelegationDialog() tea.Cmd {
 		return nil
 	}
 
+	// Check if there's an active delegation with a stored plan
+	if m.delegationPlan != nil && m.delegationAnalysis != nil {
+		// Use the stored plan from forced delegation mode
+		delegationDialog := dialog.NewDelegationDialog(m.delegationAnalysis)
+		m.dialog.OpenDialog(delegationDialog)
+		return nil
+	}
+
 	// Check if there's an active delegation coordinator with a plan
 	if m.delegation == nil || m.delegation.Coordinator == nil {
-		return util.ReportError(fmt.Errorf("no active delegation plan"))
+		return util.ReportError(fmt.Errorf("no active delegation plan - press ctrl+shift+d to start forced delegation"))
+	}
+
+	if !m.delegation.IsActive() {
+		return util.ReportError(fmt.Errorf("delegation not active - agents may still be running"))
 	}
 
 	status := m.delegation.Coordinator.GetStatus()
 	if status.Plan == nil || len(status.Plan.SubTasks) == 0 {
-		return util.ReportError(fmt.Errorf("no sub-tasks in delegation plan"))
+		return util.ReportError(fmt.Errorf("delegation plan has no sub-tasks"))
 	}
 
 	plan := status.Plan

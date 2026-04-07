@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/catwalk/pkg/catwalk"
+	"github.com/charmbracelet/crush/internal/agent/delegation"
 	"github.com/charmbracelet/crush/internal/commands"
 	"github.com/charmbracelet/crush/internal/config"
 	"github.com/charmbracelet/crush/internal/message"
@@ -85,6 +86,16 @@ type (
 	ActionEnableDockerMCP struct{}
 	// ActionDisableDockerMCP is a message to disable Docker MCP.
 	ActionDisableDockerMCP struct{}
+
+	// ActionDelegationApproved is sent when a delegation plan is approved.
+	ActionDelegationApproved struct {
+		Plan *delegation.DelegationPlan
+	}
+
+	// ActionDelegationRejected is sent when a delegation plan is rejected.
+	ActionDelegationRejected struct {
+		Reason string
+	}
 )
 
 // Messages for API key input dialog.

@@ -69,7 +69,7 @@ func (d *DelegationDialog) HandleMsg(msg tea.Msg) Action {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		result := d.handleKeyMsg(msg)
-		if result == "" {
+		if result == nil {
 			return nil
 		}
 		return result
@@ -77,40 +77,44 @@ func (d *DelegationDialog) HandleMsg(msg tea.Msg) Action {
 	return nil
 }
 
-// handleKeyMsg processes keyboard input and returns action string.
-func (d *DelegationDialog) handleKeyMsg(msg tea.KeyPressMsg) string {
+// handleKeyMsg processes keyboard input and returns an action.
+func (d *DelegationDialog) handleKeyMsg(msg tea.KeyPressMsg) Action {
 	if d.Analysis == nil || d.Analysis.ProposedPlan == nil {
-		return ""
+		return nil
 	}
 
 	// Handle key bindings
 	switch {
 	case key.Matches(msg, d.KeyApprove):
 		d.Analysis.ProposedPlan.ApprovedBy = true
-		return "delegation_approved"
+		return &ActionDelegationApproved{
+			Plan: d.Analysis.ProposedPlan,
+		}
 
 	case key.Matches(msg, d.KeyReject):
-		return "delegation_rejected"
+		return &ActionDelegationRejected{
+			Reason: "user rejected delegation plan",
+		}
 
 	case key.Matches(msg, d.KeyModify):
 		d.modifyMode = !d.modifyMode
-		return "modified"
+		return nil
 
 	case key.Matches(msg, d.KeyUp):
 		if d.selectedTask > 0 {
 			d.selectedTask--
 		}
-		return "selection_changed"
+		return nil
 
 	case key.Matches(msg, d.KeyDown):
 		plan := d.Analysis.ProposedPlan
 		if d.selectedTask < len(plan.SubTasks)-1 {
 			d.selectedTask++
 		}
-		return "selection_changed"
+		return nil
 
 	case key.Matches(msg, d.KeyEsc):
-		return "dialog_close"
+		return &ActionClose{}
 	}
 
 	// Handle text input in modify mode
@@ -119,11 +123,11 @@ func (d *DelegationDialog) handleKeyMsg(msg tea.KeyPressMsg) string {
 		if len(ch) == 1 && ch >= " " && ch <= "~" {
 			d.modifications += ch
 			d.Analysis.ProposedPlan.Modifications = d.modifications
-			return "modifications_updated"
+			return nil
 		}
 	}
 
-	return ""
+	return nil
 }
 
 // Draw renders the dialog onto the screen.
