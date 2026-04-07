@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -143,24 +144,56 @@ func (c *coordinator) agenticFetchTool(_ context.Context, client *http.Client) (
 
 			promptTemplate, err := prompt.NewPrompt("agentic_fetch", string(agenticFetchPromptTmpl), promptOpts...)
 			if err != nil {
+				slog.Error("Failed to create agentic fetch prompt template", "error", err)
 				return fantasy.ToolResponse{}, fmt.Errorf("error creating prompt: %s", err)
 			}
 
+			// 1. Build agent models with comprehensive error checking
+			slog.Debug("Building models for agentic fetch", "mode", "sub-agent")
 			_, small, err := c.buildAgentModels(ctx, true)
 			if err != nil {
+				slog.Error("Failed to build agent models for agentic fetch", "error", err)
 				return fantasy.ToolResponse{}, fmt.Errorf("error building models: %s", err)
 			}
 
+			if small.Model == nil {
+				slog.Error("Small model is nil after buildAgentModels")
+				return fantasy.ToolResponse{}, errors.New("small model is nil")
+			}
+
+			if small.ModelCfg.Provider == "" {
+				slog.Error("Small model provider is empty")
+				return fantasy.ToolResponse{}, errors.New("small model provider not set")
+			}
+
+			slog.Debug("Built models successfully", "small_model", small.ModelCfg.Model, "provider", small.ModelCfg.Provider)
+
+			// 2. Build system prompt with detailed error handling
+			slog.Debug("Building system prompt", "provider", small.Model.Provider(), "model", small.Model.Model())
 			systemPrompt, err := promptTemplate.Build(ctx, small.Model.Provider(), small.Model.Model(), c.cfg)
 			if err != nil {
+				slog.Error("Failed to build system prompt", "provider", small.Model.Provider(), "model", small.Model.Model(), "error", err)
 				return fantasy.ToolResponse{}, fmt.Errorf("error building system prompt: %s", err)
 			}
 
-			smallProviderCfg, ok := c.cfg.Config().Providers.Get(small.ModelCfg.Provider)
-			if !ok {
-				return fantasy.ToolResponse{}, errors.New("small model provider not configured")
+			if systemPrompt == "" {
+				slog.Error("System prompt is empty after build")
+				return fantasy.ToolResponse{}, errors.New("system prompt is empty")
 			}
 
+			slog.Debug("System prompt built successfully", "length", len(systemPrompt))
+
+			// 3. Verify provider configuration exists
+			smallProviderCfg, ok := c.cfg.Config().Providers.Get(small.ModelCfg.Provider)
+			if !ok {
+				slog.Error("Small model provider not found in config", "provider", small.ModelCfg.Provider)
+				return fantasy.ToolResponse{}, fmt.Errorf("small model provider '%s' not configured", small.ModelCfg.Provider)
+			}
+
+			slog.Debug("Provider config found", "provider", small.ModelCfg.Provider)
+
+			// 4. Create fetch tools with proper initialization
+			slog.Debug("Creating fetch tools")
 			webFetchTool := tools.NewWebFetchTool(tmpDir, client)
 			webSearchTool := tools.NewWebSearchTool(client)
 			fetchTools := []fantasy.AgentTool{
@@ -171,6 +204,16 @@ func (c *coordinator) agenticFetchTool(_ context.Context, client *http.Client) (
 				tools.NewSourcegraphTool(client),
 				tools.NewViewTool(c.lspManager, c.permissions, c.filetracker, tmpDir),
 			}
+
+			slog.Debug("Created fetch tools", "count", len(fetchTools))
+
+			// 5. Create session agent with comprehensive logging
+			slog.Debug("Creating session agent",
+				"large_model", small.ModelCfg.Model,
+				"small_model", small.ModelCfg.Model,
+				"tools_count", len(fetchTools),
+				"disable_auto_summarize", c.cfg.Config().Options.DisableAutoSummarize,
+			)
 
 			agent := NewSessionAgent(SessionAgentOptions{
 				LargeModel:           small, // Use small model for both (fetch doesn't need large)
@@ -184,7 +227,21 @@ func (c *coordinator) agenticFetchTool(_ context.Context, client *http.Client) (
 				Tools:                fetchTools,
 			})
 
-			return c.runSubAgent(ctx, subAgentParams{
+			if agent == nil {
+				slog.Error("Failed to create session agent - agent is nil")
+				return fantasy.ToolResponse{}, errors.New("failed to create session agent")
+			}
+
+			slog.Debug("Session agent created successfully")
+
+			// 6. Run sub-agent with context
+			slog.Debug("Running agentic fetch sub-agent",
+				"session_id", validationResult.SessionID,
+				"agent_message_id", validationResult.AgentMessageID,
+				"tool_call_id", call.ID,
+			)
+
+			result, err := c.runSubAgent(ctx, subAgentParams{
 				Agent:          agent,
 				SessionID:      validationResult.SessionID,
 				AgentMessageID: validationResult.AgentMessageID,
@@ -195,5 +252,13 @@ func (c *coordinator) agenticFetchTool(_ context.Context, client *http.Client) (
 					c.permissions.AutoApproveSession(sessionID)
 				},
 			})
+
+			if err != nil {
+				slog.Error("Agentic fetch sub-agent failed", "error", err)
+				return fantasy.ToolResponse{}, err
+			}
+
+			slog.Debug("Agentic fetch sub-agent completed successfully")
+			return result, nil
 		}), nil
 }
