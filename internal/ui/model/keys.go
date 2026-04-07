@@ -67,12 +67,13 @@ type KeyMap struct {
 	Tabs         key.Binding
 	TabPrev      key.Binding
 	TabNext      key.Binding
-	FileExplorer key.Binding
-	Injection    key.Binding
-	Delegation   key.Binding
-	Player       key.Binding
-	TTS          key.Binding
-	Tab          key.Binding
+	FileExplorer       key.Binding
+	Injection          key.Binding
+	Delegation         key.Binding
+	ForcedDelegation   key.Binding
+	Player             key.Binding
+	TTS                key.Binding
+	Tab                key.Binding
 }
 
 func DefaultKeyMap() KeyMap {
@@ -124,6 +125,10 @@ func DefaultKeyMap() KeyMap {
 		Delegation: key.NewBinding(
 			key.WithKeys("ctrl+d"),
 			key.WithHelp("ctrl+d", "task delegation"),
+		),
+		ForcedDelegation: key.NewBinding(
+			key.WithKeys("ctrl+shift+d"),
+			key.WithHelp("ctrl+shift+d", "force delegation"),
 		),
 		Player: key.NewBinding(
 			key.WithKeys("ctrl+y"),

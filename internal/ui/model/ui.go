@@ -108,6 +108,7 @@ const (
 	uiInitialize
 	uiLanding
 	uiChat
+	uiDelegation
 )
 
 type openEditorMsg struct {
@@ -286,7 +287,11 @@ type UI struct {
 	}
 
 	// Task delegation state
-	delegation *DelegationUIState
+	delegation              *DelegationUIState
+	delegationTask          string    // Current task being delegated
+	delegationForcedMode    bool      // Whether in forced delegation mode
+	delegationPlan          *delegation.DelegationPlan // Current delegation plan
+	delegationAnalysis      *delegation.DecompositionAnalysis // Current analysis
 }
 
 // New creates a new instance of the [UI] model.
@@ -528,6 +533,24 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.notifyWindowFocused = true
 	case tea.BlurMsg:
 		m.notifyWindowFocused = false
+	case *delegationStartMsg:
+		if cmd := m.processDelegationStart(msg.task); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	case *delegationPlanResultMsg:
+		if msg.err != nil {
+			cmds = append(cmds, util.ReportError(msg.err))
+		} else {
+			cmds = append(cmds, util.ReportError(fmt.Errorf("%s", msg.reason)))
+		}
+		// Return to chat mode
+		m.delegationForcedMode = false
+		m.setState(uiChat, m.focus)
+	case *delegationPlanReadyMsg:
+		// Show the delegation plan dialog
+		delegationDialog := dialog.NewDelegationDialog(msg.analysis)
+		m.dialog.OpenDialog(delegationDialog)
+		// TODO: Handle approval/rejection in dialog message handler
 	case pubsub.Event[notify.Notification]:
 		if cmd := m.handleAgentNotification(msg.Payload); cmd != nil {
 			cmds = append(cmds, cmd)
@@ -1779,6 +1802,11 @@ func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 				cmds = append(cmds, cmd)
 			}
 			return true
+		case key.Matches(msg, m.keyMap.ForcedDelegation):
+			if cmd := m.enterForcedDelegationMode(); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+			return true
 		case key.Matches(msg, m.keyMap.Chat.Details) && m.isCompact:
 			m.detailsOpen = !m.detailsOpen
 			m.updateLayoutAndSize()
@@ -2195,6 +2223,31 @@ func (m *UI) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 		if m.isCompact && m.detailsOpen {
 			m.drawSessionDetails(scr, layout.sessionDetails)
 		}
+
+	case uiDelegation:
+		// Render delegation planning mode (similar to chat, but focused on delegation)
+		if m.isCompact {
+			m.drawHeader(scr, layout.header)
+		} else {
+			m.drawSidebar(scr, layout.sidebar)
+		}
+
+		m.chat.Draw(scr, layout.main)
+		if layout.pills.Dy() > 0 && m.pillsView != "" {
+			uv.NewStyledString(m.pillsView).Draw(scr, layout.pills)
+		}
+
+		editorWidth := scr.Bounds().Dx()
+		if !m.isCompact {
+			editorWidth -= layout.sidebar.Dx()
+		}
+		editor := uv.NewStyledString(m.renderEditorView(editorWidth))
+		editor.Draw(scr, layout.editor)
+
+		// Draw details overlay in compact mode when open
+		if m.isCompact && m.detailsOpen {
+			m.drawSessionDetails(scr, layout.sessionDetails)
+		}
 	}
 
 	isOnboarding := m.state == uiOnboarding
@@ -2307,6 +2360,23 @@ func (m *UI) ShortHelp() []key.Binding {
 	switch m.state {
 	case uiInitialize:
 		binds = append(binds, k.Quit)
+	case uiDelegation:
+		// Delegation mode - show similar bindings to chat
+		if m.focus == uiFocusEditor {
+			tab.SetHelp("tab", "focus delegation")
+		} else {
+			tab.SetHelp("tab", "focus editor")
+		}
+
+		binds = append(binds,
+			tab,
+			commands,
+			k.Models,
+			k.Injection,
+			k.Delegation,
+			k.ForcedDelegation,
+			k.Player,
+		)
 	case uiChat:
 		// Show cancel binding if agent is busy.
 		if m.isAgentBusy() {
@@ -2331,6 +2401,7 @@ func (m *UI) ShortHelp() []key.Binding {
 			k.Models,
 			k.Injection,
 			k.Delegation,
+			k.ForcedDelegation,
 			k.Player,
 		)
 
@@ -2389,6 +2460,72 @@ func (m *UI) FullHelp() [][]key.Binding {
 			[]key.Binding{
 				k.Quit,
 			})
+	case uiDelegation:
+		// Delegation mode - similar to chat mode
+		mainBinds := []key.Binding{}
+		tab := k.Tab
+		if m.focus == uiFocusEditor {
+			tab.SetHelp("tab", "focus delegation")
+		} else {
+			tab.SetHelp("tab", "focus editor")
+		}
+
+		mainBinds = append(mainBinds,
+			tab,
+			commands,
+			k.Models,
+			k.Sessions,
+			k.Injection,
+			k.Delegation,
+			k.ForcedDelegation,
+			k.Player,
+		)
+		if hasSession {
+			mainBinds = append(mainBinds, k.Chat.NewSession)
+		}
+
+		binds = append(binds, mainBinds)
+
+		switch m.focus {
+		case uiFocusEditor:
+			editorBinds := []key.Binding{
+				k.Editor.Newline,
+				k.Editor.MentionFile,
+				k.Editor.OpenEditor,
+			}
+			if m.currentModelSupportsImages() {
+				editorBinds = append(editorBinds, k.Editor.AddImage, k.Editor.PasteImage)
+			}
+			binds = append(binds, editorBinds)
+			if hasAttachments {
+				binds = append(binds,
+					[]key.Binding{
+						k.Editor.AttachmentDeleteMode,
+						k.Editor.DeleteAllAttachments,
+						k.Editor.Escape,
+					},
+				)
+			}
+		case uiFocusMain:
+			binds = append(binds,
+				[]key.Binding{
+					k.Chat.UpDown,
+					k.Chat.UpDownOneItem,
+					k.Chat.PageUp,
+					k.Chat.PageDown,
+				},
+				[]key.Binding{
+					k.Chat.HalfPageUp,
+					k.Chat.HalfPageDown,
+					k.Chat.Home,
+					k.Chat.End,
+				},
+				[]key.Binding{
+					k.Chat.Copy,
+					k.Chat.ClearHighlight,
+				},
+			)
+		}
 	case uiChat:
 		// Show cancel binding if agent is busy.
 		if m.isAgentBusy() {
@@ -2416,6 +2553,7 @@ func (m *UI) FullHelp() [][]key.Binding {
 			k.Sessions,
 			k.Injection,
 			k.Delegation,
+			k.ForcedDelegation,
 			k.Player,
 		)
 		if hasSession {
@@ -2477,6 +2615,7 @@ func (m *UI) FullHelp() [][]key.Binding {
 					k.Sessions,
 					k.Injection,
 					k.Delegation,
+					k.ForcedDelegation,
 					k.Player,
 				},
 			)
@@ -3495,6 +3634,122 @@ func (m *UI) openDelegationDialog() tea.Cmd {
 	delegationDialog := dialog.NewDelegationDialog(analysis)
 	m.dialog.OpenDialog(delegationDialog)
 	return nil
+}
+
+// enterForcedDelegationMode enters the forced delegation planning mode.
+// This routes the current task through the delegation system in an isolated loop.
+func (m *UI) enterForcedDelegationMode() tea.Cmd {
+	// Get the current message from the editor
+	task := m.textarea.Value()
+	if task == "" {
+		return util.ReportError(fmt.Errorf("no task specified in editor"))
+	}
+
+	// Create or switch to current session if needed
+	if !m.hasSession() {
+		return util.ReportError(fmt.Errorf("no active session for delegation"))
+	}
+
+	// Store the task and switch to delegation mode
+	m.delegationTask = task
+	m.delegationForcedMode = true
+
+	// Switch to delegation state
+	m.setState(uiDelegation, uiFocusMain)
+
+	// Clear the editor
+	m.textarea.Reset()
+	m.setEditorPrompt(false)
+
+	// Return a command to start the delegation planning loop
+	return m.startDelegationPlanningLoop()
+}
+
+// startDelegationPlanningLoop initiates the delegation planning process.
+func (m *UI) startDelegationPlanningLoop() tea.Cmd {
+	return func() tea.Msg {
+		// This will be processed in Update to avoid blocking
+		return &delegationStartMsg{
+			task: m.delegationTask,
+		}
+	}
+}
+
+type delegationStartMsg struct {
+	task string
+}
+
+type delegationPlanResultMsg struct {
+	recommendation delegation.DelegationRecommendation
+	reason         string
+	canDelegate    bool
+	err            error
+}
+
+type delegationPlanReadyMsg struct {
+	analysis *delegation.DecompositionAnalysis
+}
+
+// processDelegationStart scores and plans the delegation of a task.
+func (m *UI) processDelegationStart(task string) tea.Cmd {
+	return func() tea.Msg {
+		// Score the task for delegatability
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		scorer := delegation.NewScorer(m.com.Config())
+		score, err := scorer.ScoreTask(ctx, task)
+		if err != nil {
+			return &delegationPlanResultMsg{
+				err: fmt.Errorf("failed to score task: %w", err),
+			}
+		}
+
+		slog.Info("Task delegatability scored",
+			"score", score.Score,
+			"recommendation", score.Recommendation,
+			"confidence", score.Confidence)
+
+		// If score is too low, recommend single agent execution
+		if score.Score < 0.4 {
+			return &delegationPlanResultMsg{
+				recommendation: score.Recommendation,
+				reason:         "Task delegatability too low for parallel execution",
+				canDelegate:    false,
+			}
+		}
+
+		// Create decomposition plan
+		decomposer := delegation.NewDecomposer(m.com.Config())
+		analysis, err := decomposer.AnalyzeTask(ctx, task)
+		if err != nil {
+			return &delegationPlanResultMsg{
+				err: fmt.Errorf("failed to analyze task: %w", err),
+			}
+		}
+
+		if !analysis.CanDecompose {
+			return &delegationPlanResultMsg{
+				recommendation: delegation.RecommendSingleAgent,
+				reason:         analysis.Reason,
+				canDelegate:    false,
+			}
+		}
+
+		// Store the plan and analysis
+		m.delegationPlan = analysis.ProposedPlan
+		m.delegationAnalysis = analysis
+
+		slog.Info("Delegation plan created",
+			"plan_id", m.delegationPlan.ID,
+			"sub_tasks", len(m.delegationPlan.SubTasks),
+			"confidence", analysis.Confidence)
+
+		// Show the delegation plan dialog
+		return &delegationPlanReadyMsg{
+			analysis: analysis,
+		}
+	}
 }
 
 // openPermissionsDialog opens the permissions dialog for a permission request.
