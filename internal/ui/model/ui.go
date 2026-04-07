@@ -1099,6 +1099,13 @@ func (m *UI) appendSessionMessage(msg message.Message) tea.Cmd {
 			cmds = append(cmds, cmd)
 		}
 	case message.Assistant:
+		// Check if this assistant response contains a delegation plan
+		if m.CheckForDelegationPlanInMessage(&msg) {
+			slog.Info("Delegation plan extracted from agent response, showing dialog")
+			// The plan detection will handle showing the dialog
+			// Still display the message in chat
+		}
+
 		items := chat.ExtractMessageItems(m.com.Styles, &msg, nil)
 		for _, item := range items {
 			if animatable, ok := item.(chat.Animatable); ok {
@@ -1177,6 +1184,14 @@ func (m *UI) handleClickFocus(msg tea.MouseClickMsg) (cmd tea.Cmd) {
 // that is why we need to handle creating/updating each tool call message too
 func (m *UI) updateSessionMessage(msg message.Message) tea.Cmd {
 	var cmds []tea.Cmd
+
+	// Check if this updated message contains a delegation plan
+	if msg.Role == message.Assistant {
+		if m.CheckForDelegationPlanInMessage(&msg) {
+			slog.Info("Delegation plan extracted from updated assistant message")
+		}
+	}
+
 	existingItem := m.chat.MessageItem(msg.ID)
 
 	if existingItem != nil {
