@@ -26,6 +26,7 @@
 - **Automatic Task Delegation:** intelligent delegatability scoring on every task with self-calibrating model selection, automatic decomposition for high-scoring tasks across isolated git branches
 - **Smart Context Injection:** snapshot-based file selection with multi-resolution context levels (tree summary, file summaries, full content) and intelligent token budgeting
 - **Intelligent Text Chunking:** automatic text splitting with contextual headers/footers for large files across multiple model context windows
+- **Bound MCP Integration:** recursive directory traversal, AST-based dependency resolution, and strict token/size limits via our custom Rust-based MCP server integration
 - **YouTube Integration:** built-in mini player for watching videos while coding (audio-only mode via mpv)
 - **Speech Features:** text-to-speech for code reading and speech-to-text for hands-free input
 
