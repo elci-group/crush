@@ -1,0 +1,42 @@
+/home/adminx/bound/src/main.rs
+  Functions:
+    parse_filter (args: 1)
+    main (args: 0)
+    parse_references_generic (args: 1)
+    resolve_ref_path (args: 3)
+  Structs:
+    Args (fields: 10)
+
+/home/adminx/bound/src/metadata.rs
+  Functions:
+    collect_metadata (args: 3)
+    hash_string (args: 1)
+  Structs:
+    FileMetadata (fields: 5)
+
+/home/adminx/bound/src/tree.rs
+  Functions:
+    generate_tree (args: 2)
+
+/home/adminx/bound/src/telemetry.rs
+  Structs:
+    Telemetry (fields: 4)
+
+/home/adminx/bound/src/logging.rs
+  Structs:
+    Logger (fields: 2)
+  Enums:
+    LogLevel (variants: 5)
+
+/home/adminx/bound/src/expandable.rs
+  Functions:
+    wrap_expandable (args: 2)
+  Structs:
+    ExpandableBlock (fields: 3)
+
+/home/adminx/bound/src/furnace.rs
+  Functions:
+    analyze_file (args: 2)
+  Structs:
+    FurnaceReport (fields: 3)
+
